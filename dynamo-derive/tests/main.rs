@@ -11,7 +11,7 @@ async fn test_create_table() {
     #[derive(Table)]
     #[table(table_name = "AwesomeFooTable")]
     struct FooTable<'a> {
-        #[table(range_key("S"))]
+        #[table(range_key("B"))]
         a: &'a [Vec<[String; 1]>],
         #[table(hash_key("S"))]
         b: &'a [[Vec<String>; 1]],
@@ -70,7 +70,7 @@ async fn test_create_table() {
                 .unwrap(),
             AttributeDefinition::builder()
                 .attribute_name("A")
-                .attribute_type(ScalarAttributeType::S)
+                .attribute_type(ScalarAttributeType::B)
                 .build()
                 .unwrap(),
         ]
@@ -81,7 +81,7 @@ async fn test_create_table() {
     inner_map.insert("2".to_string(), "b".to_string());
     map.insert("1".to_string(), vec![inner_map]);
 
-    let foo = FooTable {
+    let foo_table = FooTable {
         a: &[vec![[String::from("1")]]],
         b: &[[vec![String::from("1")]]],
         c: vec![&[[1]]],
@@ -94,7 +94,7 @@ async fn test_create_table() {
         map,
     };
 
-    let builder = foo.put_item(client.put_item());
+    let builder = foo_table.put_item(client.put_item());
     assert_eq!(
         builder.get_table_name().as_ref().unwrap(),
         "AwesomeFooTable"
