@@ -1,4 +1,3 @@
-mod ast;
 mod dynamo;
 mod table;
 mod util;

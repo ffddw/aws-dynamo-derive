@@ -6,18 +6,40 @@ use aws_sdk_dynamodb::Client;
 use crab_box_dynamo_derive::Table;
 use std::collections::HashMap;
 
+/// ## Compile fail cases
+/// ```compile_fail
+/// #[derive(Table)]
+///     struct Table {
+///         #[table(hash_key("S"))]
+///         hash_key: String,
+///         #[table(hash_key("N"))] // compile fails: exactly one hash key allowed
+///         duplicated_hash_key: String,
+///     }
+///
+///
+/// #[derive(Table)]
+///     struct Table {
+///         #[table(hash_key("S"))]
+///         hash_key: String,
+///         #[table(range_key("N"))]
+///         range_key: u32,
+///         #[table(range_key("N"))]
+///         duplicated_range_key: u32, // compile fails: more than one range key
+///     }
+
 #[tokio::test]
 async fn test_create_table() {
     #[derive(Table)]
     #[table(table_name = "AwesomeFooTable")]
     struct FooTable<'a> {
-        #[table(range_key("B"))]
-        a: &'a [Vec<[String; 1]>],
         #[table(hash_key("S"))]
+        hash_key: String,
+        #[table(range_key("N"))]
+        range_key: u32,
+        a: &'a [Vec<[String; 1]>],
         b: &'a [[Vec<String>; 1]],
         c: Vec<&'a [[u8; 1]]>,
         d: Vec<[&'a [i16]; 1]>,
-        #[table(hash_key("N"))]
         e: [&'a [Vec<u32>]; 1],
         f: [Vec<&'a [i64]>; 1],
         blob: &'a [Vec<Blob>; 1],
@@ -38,17 +60,12 @@ async fn test_create_table() {
         key_schemas,
         &vec![
             KeySchemaElement::builder()
-                .attribute_name("B")
+                .attribute_name("HashKey")
                 .key_type(KeyType::Hash)
                 .build()
                 .unwrap(),
             KeySchemaElement::builder()
-                .attribute_name("E")
-                .key_type(KeyType::Hash)
-                .build()
-                .unwrap(),
-            KeySchemaElement::builder()
-                .attribute_name("A")
+                .attribute_name("RangeKey")
                 .key_type(KeyType::Range)
                 .build()
                 .unwrap()
@@ -59,18 +76,13 @@ async fn test_create_table() {
         attribute_definitions,
         &vec![
             AttributeDefinition::builder()
-                .attribute_name("B")
+                .attribute_name("HashKey")
                 .attribute_type(ScalarAttributeType::S)
                 .build()
                 .unwrap(),
             AttributeDefinition::builder()
-                .attribute_name("E")
+                .attribute_name("RangeKey")
                 .attribute_type(ScalarAttributeType::N)
-                .build()
-                .unwrap(),
-            AttributeDefinition::builder()
-                .attribute_name("A")
-                .attribute_type(ScalarAttributeType::B)
                 .build()
                 .unwrap(),
         ]
@@ -82,6 +94,8 @@ async fn test_create_table() {
     map.insert("1".to_string(), vec![inner_map]);
 
     let foo_table = FooTable {
+        hash_key: "hash_key".to_string(),
+        range_key: 1,
         a: &[vec![[String::from("1")]]],
         b: &[[vec![String::from("1")]]],
         c: vec![&[[1]]],

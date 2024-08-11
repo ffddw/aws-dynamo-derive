@@ -4,13 +4,13 @@ use proc_macro2::{Ident, Literal, TokenStream};
 use quote::quote;
 use std::fmt::{Display, Formatter};
 
-#[derive(Copy, Clone)]
-pub enum Type {
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum KeySchemaType {
     HashKey,
     RangeKey,
 }
 
-impl Display for Type {
+impl Display for KeySchemaType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let val = match self {
             Self::HashKey => "hash_key",
@@ -20,12 +20,12 @@ impl Display for Type {
     }
 }
 
-pub fn get_key_scheme(id: &Ident, key_type: Type) -> TokenStream {
+pub fn expand_key_schema(id: &Ident, key_type: KeySchemaType) -> TokenStream {
     let ident = Literal::string(&to_pascal_case(&id.to_string()));
 
     let key_type = match key_type {
-        Type::HashKey => quote! { aws_sdk_dynamodb::types::KeyType::Hash },
-        Type::RangeKey => quote! { aws_sdk_dynamodb::types::KeyType::Range },
+        KeySchemaType::HashKey => quote! { aws_sdk_dynamodb::types::KeyType::Hash },
+        KeySchemaType::RangeKey => quote! { aws_sdk_dynamodb::types::KeyType::Range },
     };
 
     quote! {
