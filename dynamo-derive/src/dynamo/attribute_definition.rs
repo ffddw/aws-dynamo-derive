@@ -10,7 +10,7 @@ pub enum ScalarAttributeType {
     S,
 }
 
-pub fn expand_attribute_definition(id: &Ident, attr_type: ScalarAttributeType) -> TokenStream {
+pub fn expand_attribute_definition(id: &Ident, attr_type: &ScalarAttributeType) -> TokenStream {
     let ident = Literal::string(&to_pascal_case(&id.to_string()));
 
     let scalar_attr_type = match attr_type {

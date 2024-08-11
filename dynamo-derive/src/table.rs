@@ -2,8 +2,8 @@ mod attr;
 
 use crate::dynamo::attribute_definition::expand_attribute_definition;
 use crate::dynamo::attribute_value::expand_attribute_value;
-use crate::dynamo::key_scheme::{expand_key_schema, KeySchemaType};
-use crate::table::attr::Attr;
+use crate::dynamo::key_schema::{expand_key_schema, KeySchemaType};
+use crate::table::attr::Attrs;
 use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -21,12 +21,14 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         _ => return Err(Error::new(input.span(), "only struct type available")),
     };
 
-    let keys = extend_keys(ds)?;
+    let attrs = Attrs::parse_table_fields(&ds.fields)?;
+    let keys = extend_keys(&attrs);
+    let gsi_key_schemas = extend_global_secondary_index_key_schemas(&attrs);
     let items = extend_items(ds)?;
     let generics = &input.generics;
     let vis = &input.vis;
-
     let struct_name = &input.ident;
+
     let mut out = TokenStream::new();
 
     out.extend(quote! {
@@ -36,6 +38,10 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
                 builder
                     #table_name
                     #keys
+            }
+
+            #vis fn get_global_secondary_index_key_schemas() -> Vec<aws_sdk_dynamodb::types::KeySchemaElement> {
+                vec![ #gsi_key_schemas ]
             }
 
             #vis fn put_item(&self, mut builder: aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder)
@@ -66,31 +72,46 @@ fn extend_table_name(id: &Ident, attrs: &[Attribute]) -> Result<TokenStream> {
     Ok(quote! { .table_name(#table_name) })
 }
 
-fn extend_keys(ds: &DataStruct) -> Result<TokenStream> {
-    let attr = Attr::parse_table_fields(&ds.fields)?;
-
+fn extend_keys(attrs: &Attrs) -> TokenStream {
     let mut attribute_definitions = TokenStream::new();
     let mut key_schemas = TokenStream::new();
 
-    attr.attribute_definitions
-        .into_iter()
+    attrs
+        .attribute_definitions
+        .iter()
         .for_each(|(id, attr_ty)| {
-            let attribute_definition = expand_attribute_definition(&id, attr_ty);
+            let attribute_definition = expand_attribute_definition(id, attr_ty);
             attribute_definitions.extend(quote! { .attribute_definitions(#attribute_definition) })
         });
 
-    let hash_key_tokens = expand_key_schema(&attr.hash_key, KeySchemaType::HashKey);
+    let hash_key_tokens = expand_key_schema(&attrs.hash_key, KeySchemaType::HashKey);
     key_schemas.extend(quote! { .key_schema(#hash_key_tokens) });
 
-    attr.range_key.iter().for_each(|range_key| {
+    attrs.range_key.iter().for_each(|range_key| {
         let range_key_tokens = expand_key_schema(range_key, KeySchemaType::RangeKey);
         key_schemas.extend(quote! { .key_schema(#range_key_tokens) })
     });
 
-    Ok(quote! {
+    quote! {
         #attribute_definitions
         #key_schemas
-    })
+    }
+}
+
+fn extend_global_secondary_index_key_schemas(attrs: &Attrs) -> TokenStream {
+    let mut gsi_key_schemas = TokenStream::new();
+
+    attrs
+        .global_secondary_indexes
+        .iter()
+        .for_each(|(ident, key_schema_type)| {
+            let gsi_key_schemas_token = expand_key_schema(ident, *key_schema_type);
+            gsi_key_schemas.extend(quote! {
+                #gsi_key_schemas_token,
+            });
+        });
+
+    gsi_key_schemas
 }
 
 fn extend_items(ds: &DataStruct) -> Result<TokenStream> {
