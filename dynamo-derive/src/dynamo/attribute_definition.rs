@@ -16,7 +16,7 @@ pub enum ScalarAttributeType {
 impl ScalarAttributeType {
     pub fn validate_type(&self, ty: &Type) -> Result<()> {
         let id = Ident::new("dummy_id", ty.span());
-        let (_, attr_value_ty) = expand_attribute_value(&id, ty, 0)?;
+        let (_, attr_value_ty) = expand_attribute_value(&id, ty, 0, &mut vec![])?;
 
         let scalar_attr_type = match attr_value_ty {
             AttributeValueType::Blob => Self::B,

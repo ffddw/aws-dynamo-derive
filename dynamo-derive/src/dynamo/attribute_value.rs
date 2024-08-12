@@ -31,20 +31,28 @@ pub fn expand_attribute_value(
     id: &Ident,
     ty: &Type,
     depth: usize,
+    attr_value_types: &mut Vec<AttributeValueType>,
 ) -> Result<(TokenStream, AttributeValueType)> {
-    match ty {
-        Type::Path(path) => expand_path(id, path, depth),
-        Type::Array(array) => expand_array(id, array, depth),
-        Type::Slice(slice) => expand_slice(id, slice, depth),
-        Type::Reference(reference) => expand_attribute_value(id, &reference.elem, depth),
+    let (token_stream, nested_type) = match ty {
+        Type::Path(path) => expand_path(id, path, depth, attr_value_types),
+        Type::Array(array) => expand_array(id, array, depth, attr_value_types),
+        Type::Slice(slice) => expand_slice(id, slice, depth, attr_value_types),
+        Type::Reference(reference) => {
+            expand_attribute_value(id, &reference.elem, depth, attr_value_types)
+        }
         _ => Err(Error::new(ty.span(), "unsupported type")),
-    }
+    }?;
+
+    attr_value_types.push(nested_type);
+
+    Ok((token_stream, nested_type))
 }
 
 fn expand_path(
     id: &Ident,
     path: &TypePath,
     depth: usize,
+    attr_value_types: &mut Vec<AttributeValueType>,
 ) -> Result<(TokenStream, AttributeValueType)> {
     let (collection, iterator) = get_collection_and_iterator(id, depth);
 
@@ -72,7 +80,7 @@ fn expand_path(
             {
                 GenericArgument::Type(ty) => {
                     let (nested_token_stream, nested_type) =
-                        expand_attribute_value(id, ty, depth + 1)?;
+                        expand_attribute_value(id, ty, depth + 1, attr_value_types)?;
 
                     expand_plural_nested(
                         nested_token_stream,
@@ -129,7 +137,8 @@ fn expand_path(
 
             match value_ty {
                 GenericArgument::Type(ty) => {
-                    let (nested_token_stream, _) = expand_attribute_value(id, ty, depth + 1)?;
+                    let (nested_token_stream, _) =
+                        expand_attribute_value(id, ty, depth + 1, attr_value_types)?;
                     (
                         quote! {
                             {
@@ -187,9 +196,11 @@ fn expand_array(
     id: &Ident,
     array: &TypeArray,
     depth: usize,
+    attr_value_types: &mut Vec<AttributeValueType>,
 ) -> Result<(TokenStream, AttributeValueType)> {
     let (collection, iterator) = get_collection_and_iterator(id, depth);
-    let (nested_token_stream, nested_type) = expand_attribute_value(id, &array.elem, depth + 1)?;
+    let (nested_token_stream, nested_type) =
+        expand_attribute_value(id, &array.elem, depth + 1, attr_value_types)?;
     expand_plural_nested(
         nested_token_stream,
         nested_type,
@@ -203,9 +214,11 @@ fn expand_slice(
     id: &Ident,
     slice: &TypeSlice,
     depth: usize,
+    attr_value_types: &mut Vec<AttributeValueType>,
 ) -> Result<(TokenStream, AttributeValueType)> {
     let (collection, iterator) = get_collection_and_iterator(id, depth);
-    let (nested_token_stream, nested_type) = expand_attribute_value(id, &slice.elem, depth + 1)?;
+    let (nested_token_stream, nested_type) =
+        expand_attribute_value(id, &slice.elem, depth + 1, attr_value_types)?;
     expand_plural_nested(
         nested_token_stream,
         nested_type,
@@ -246,7 +259,6 @@ fn expand_plural_nested(
             },
             AttributeValueType::StringList,
         ),
-
         AttributeValueType::Number => (
             quote! {
                 aws_sdk_dynamodb::types::AttributeValue::Ns(
@@ -258,7 +270,6 @@ fn expand_plural_nested(
             },
             AttributeValueType::NumberList,
         ),
-
         AttributeValueType::BlobList
         | AttributeValueType::StringList
         | AttributeValueType::NumberList
@@ -274,7 +285,6 @@ fn expand_plural_nested(
             },
             AttributeValueType::List,
         ),
-
         _ => return Err(Error::new(span, "unsupported type")),
     })
 }
@@ -289,13 +299,13 @@ mod test_attribute_value {
     #[test]
     fn test_simple_types() -> Result<()> {
         let ident = parse_quote! { foo };
-
         let string_types = [parse_quote! { String }, parse_quote! { &str }];
         let expected = quote! {
             aws_sdk_dynamodb::types::AttributeValue::S(self.foo.to_string())
         };
+        let mut attr_value_types = vec![];
         string_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string());
             assert_eq!(root_ty, AttributeValueType::String);
             Result::Ok(())
@@ -315,15 +325,18 @@ mod test_attribute_value {
         let expected = quote! {
             aws_sdk_dynamodb::types::AttributeValue::N(self.foo.to_string())
         };
+
+        let mut attr_value_types = vec![];
         number_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string());
             assert_eq!(root_ty, AttributeValueType::Number);
             Result::Ok(())
         })?;
 
+        let mut attr_value_types = vec![];
         let blob_type = parse_quote! { Blob };
-        let (ts, root_ty) = expand_attribute_value(&ident, &blob_type, 0)?;
+        let (ts, root_ty) = expand_attribute_value(&ident, &blob_type, 0, &mut attr_value_types)?;
         let expected = quote! {
             aws_sdk_dynamodb::types::AttributeValue::B(self.foo.clone())
         };
@@ -334,7 +347,8 @@ mod test_attribute_value {
         let expected = quote! {
             aws_sdk_dynamodb::types::AttributeValue::Bool(self.foo)
         };
-        let (ts, root_ty) = expand_attribute_value(&ident, &bool_type, 0)?;
+        let mut attr_value_types = vec![];
+        let (ts, root_ty) = expand_attribute_value(&ident, &bool_type, 0, &mut attr_value_types)?;
         assert_eq!(ts.to_string(), expected.to_string());
         assert_eq!(root_ty, AttributeValueType::Bool);
 
@@ -342,7 +356,8 @@ mod test_attribute_value {
         let expected = quote! {
             aws_sdk_dynamodb::types::AttributeValue::Null(self.foo.is_none())
         };
-        let (ts, root_ty) = expand_attribute_value(&ident, &null_type, 0)?;
+        let mut attr_value_types = vec![];
+        let (ts, root_ty) = expand_attribute_value(&ident, &null_type, 0, &mut attr_value_types)?;
         assert_eq!(ts.to_string(), expected.to_string());
         assert_eq!(root_ty, AttributeValueType::Null);
 
@@ -367,8 +382,9 @@ mod test_attribute_value {
                     .collect()
             )
         };
+        let mut attr_value_types = vec![];
         string_list_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string(),);
             assert_eq!(root_ty, AttributeValueType::StringList);
             Result::Ok(())
@@ -394,8 +410,9 @@ mod test_attribute_value {
                     .collect()
             )
         };
+        let mut attr_value_types = vec![];
         number_list_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string());
             assert_eq!(root_ty, AttributeValueType::NumberList);
             Result::Ok(())
@@ -410,8 +427,9 @@ mod test_attribute_value {
                     .collect()
             )
         };
+        let mut attr_value_types = vec![];
         blob_list_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string());
             assert_eq!(root_ty, AttributeValueType::BlobList);
             Result::Ok(())
@@ -437,8 +455,9 @@ mod test_attribute_value {
                     .collect()
             )
         };
+        let mut attr_value_types = vec![];
         nested_number_list_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string());
             assert_eq!(root_ty, AttributeValueType::List);
             Result::Ok(())
@@ -480,8 +499,9 @@ mod test_attribute_value {
                     .collect()
             )
         };
+        let mut attr_value_types = vec![];
         number_combination_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string());
             assert_eq!(root_ty, AttributeValueType::List);
             Result::Ok(())
@@ -517,8 +537,9 @@ mod test_attribute_value {
                     .collect()
             )
         };
+        let mut attr_value_types = vec![];
         string_combination_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string());
             assert_eq!(root_ty, AttributeValueType::List);
             Result::Ok(())
@@ -531,7 +552,8 @@ mod test_attribute_value {
     fn test_map_not_string_key_fail() {
         let ident = parse_quote! { foo };
         let map = parse_quote! { HashMap<i32, String> };
-        let err = expand_attribute_value(&ident, &map, 0);
+        let mut attr_value_types = vec![];
+        let err = expand_attribute_value(&ident, &map, 0, &mut attr_value_types);
         assert_eq!(
             err.err().unwrap().to_string(),
             "key type of HashMap must be String"
@@ -560,8 +582,9 @@ mod test_attribute_value {
             }
         };
 
+        let mut attr_value_types = vec![];
         number_map_types.iter().try_for_each(|t| {
-            let (ts, root_ty) = expand_attribute_value(&ident, t, 0)?;
+            let (ts, root_ty) = expand_attribute_value(&ident, t, 0, &mut attr_value_types)?;
             assert_eq!(ts.to_string(), expected.to_string());
             assert_eq!(root_ty, AttributeValueType::Map);
             Result::Ok(())
@@ -599,10 +622,30 @@ mod test_attribute_value {
                 aws_sdk_dynamodb::types::AttributeValue::M(__private_tobe_map)
             }
         };
-        let (ts, root_ty) = expand_attribute_value(&ident, &nested_map_type, 0)?;
+        let mut attr_value_types = vec![];
+        let (ts, root_ty) =
+            expand_attribute_value(&ident, &nested_map_type, 0, &mut attr_value_types)?;
         assert_eq!(ts.to_string(), expected.to_string());
         assert_eq!(root_ty, AttributeValueType::Map);
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_nested_types() -> Result<()> {
+        let ident = parse_quote! { foo };
+        let number_map_types = parse_quote! { Vec<HashMap<String, Vec<u32>>> };
+        let mut attr_value_types = vec![];
+        expand_attribute_value(&ident, &number_map_types, 0, &mut attr_value_types)?;
+        assert_eq!(
+            attr_value_types,
+            vec![
+                AttributeValueType::Number,
+                AttributeValueType::NumberList,
+                AttributeValueType::Map,
+                AttributeValueType::List
+            ]
+        );
         Ok(())
     }
 }

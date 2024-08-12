@@ -44,6 +44,10 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
                 #gsi_key_schemas
             }
 
+            #vis fn from_attribute_value(value: aws_sdk_dynamodb::types::AttributeValue) -> Self {
+
+            }
+
             #vis fn put_item(&self, mut builder: aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder)
             -> aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder {
                 builder
@@ -132,7 +136,8 @@ fn extend_items(ds: &DataStruct) -> Result<TokenStream> {
             .as_ref()
             .ok_or(Error::new(field.ident.span(), "field ident not found"))?;
         let ident_lit = Literal::string(&to_pascal_case(&ident.to_string()));
-        let (item, _) = expand_attribute_value(ident, ty, 0)?.clone();
+        let mut attr_value_types = vec![];
+        let (item, _) = expand_attribute_value(ident, ty, 0, &mut attr_value_types)?.clone();
 
         items.extend(quote! {
             .item(#ident_lit.to_string(), #item)
