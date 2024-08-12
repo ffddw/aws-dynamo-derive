@@ -157,7 +157,7 @@ fn parse_global_secondary_index_key_schemas(
             }
 
             if index_name.is_empty() {
-                return Err(gsi.error("emtpy index name"));
+                return Err(gsi.error("empty index name"));
             };
 
             global_secondary_indexes
