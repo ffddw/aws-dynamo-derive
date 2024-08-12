@@ -94,6 +94,8 @@ fn parse_key_schemas(
                 }
             };
 
+            scalar_attribute_type.validate_type(&field.ty)?;
+
             let ident = field
                 .ident
                 .as_ref()
@@ -111,7 +113,7 @@ fn parse_key_schemas(
 }
 
 fn validate_and_sort_key_schemas(
-    key_schemas: &mut Vec<(Ident, KeySchemaType)>,
+    key_schemas: &mut [(Ident, KeySchemaType)],
     span: Span,
 ) -> Result<()> {
     match key_schemas
@@ -204,9 +206,9 @@ mod test {
                 #[table(hash_key("S"))]
                 hk: String,
                 #[table(range_key("N"))]
-                rk: String,
+                rk: i32,
                 #[table(range_key("N"))]
-                rk2: String
+                rk2: u128
             }
         };
         let fields = Fields::Named(fields_named);
@@ -227,7 +229,7 @@ mod test {
                 #[table(hash_key("S"))]
                 hk: String,
                 #[table(range_key("N"))]
-                rk: String,
+                rk: u32,
                 #[table(global_secondary_index(index_name="test_idx", hash_key("S")))]
                 gsi_hk: String,
                 #[table(global_secondary_index(index_name="test_idx2", hash_key("S")))]
@@ -303,13 +305,12 @@ mod test {
                 if meta.path.is_ident("global_secondary_index") {
                     meta.parse_nested_meta(|meta| {
                         if meta.path.is_ident("index_name") {
-                            println!("{:?}", meta.value()?.parse::<Literal>()?);
+                            meta.value()?.parse::<Literal>()?;
                             Ok(())
                         } else if meta.path.is_ident("range_key") {
                             let content;
                             parenthesized!(content in meta.input);
-                            let scalar_attribute_type: Option<Literal> = content.parse().ok();
-                            println!("{:?}", scalar_attribute_type);
+                            content.parse::<Option<Literal>>().ok();
                             Ok(())
                         } else {
                             Err(meta.error("unsupported ingredient"))
