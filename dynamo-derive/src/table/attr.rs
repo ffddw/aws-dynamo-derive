@@ -3,26 +3,27 @@ use crate::dynamo::attribute_definition::ScalarAttributeType;
 use crate::dynamo::key_schema::KeySchemaType;
 use crate::util::{strip_quote_mark, to_pascal_case};
 
-use proc_macro2::Ident;
+use proc_macro2::{Ident, Literal, Span};
+use std::collections::BTreeMap;
 use syn::meta::ParseNestedMeta;
 use syn::spanned::Spanned;
 use syn::{parenthesized, Error, Field, Fields, LitStr, Result};
 
 const GLOBAL_SECONDARY_INDEX_ENTRY: &str = "global_secondary_index";
+const GLOBAL_SECONDARY_INDEX_NAME: &str = "index_name";
 
 #[derive(Debug)]
 pub struct Attrs {
-    pub hash_key: Ident,
-    pub range_key: Option<Ident>,
+    pub key_schemas: Vec<(Ident, KeySchemaType)>,
     pub attribute_definitions: Vec<(Ident, ScalarAttributeType)>,
-    pub global_secondary_indexes: Vec<(Ident, KeySchemaType)>,
+    pub global_secondary_indexes: BTreeMap<String, Vec<(Ident, KeySchemaType)>>,
 }
 
 impl Attrs {
     pub fn parse_table_fields(fields: &Fields) -> Result<Self> {
         let mut key_schemas = vec![];
         let mut attribute_definitions = vec![];
-        let mut global_secondary_indexes = vec![];
+        let mut global_secondary_indexes = BTreeMap::new();
 
         for field in fields {
             for attr in &field.attrs {
@@ -46,39 +47,15 @@ impl Attrs {
             }
         }
 
-        match key_schemas
-            .iter()
-            .filter(|(_, ks)| ks.eq(&KeySchemaType::HashKey))
-            .count()
-        {
-            0 => Err(Error::new(fields.span(), "HashKey not found")),
-            2.. => Err(Error::new(fields.span(), "only one HashKey is allowed")),
-            1 => Ok(()),
-        }?;
+        validate_key_schemas(&key_schemas, fields.span())?;
+        global_secondary_indexes
+            .values()
+            .try_for_each(|gsi_key_schemas| validate_key_schemas(gsi_key_schemas, fields.span()))?;
 
-        if key_schemas
-            .iter()
-            .filter(|(_, ks)| ks.eq(&KeySchemaType::RangeKey))
-            .count()
-            > 1
-        {
-            return Err(Error::new(fields.span(), "at most one RangeKey is allowed"));
-        };
-
-        let hash_key = key_schemas
-            .iter()
-            .find(|(_, ks)| ks.eq(&KeySchemaType::HashKey))
-            .map(|(ident, _)| ident.clone())
-            .unwrap();
-
-        let range_key = key_schemas
-            .iter()
-            .find(|(_, ks)| ks.eq(&KeySchemaType::RangeKey))
-            .map(|(id, _)| id.clone());
+        key_schemas.sort();
 
         Ok(Self {
-            hash_key,
-            range_key,
+            key_schemas,
             attribute_definitions,
             global_secondary_indexes,
         })
@@ -133,15 +110,55 @@ fn parse_key_schemas(
     Ok(())
 }
 
+fn validate_key_schemas(key_schemas: &[(Ident, KeySchemaType)], span: Span) -> Result<()> {
+    match key_schemas
+        .iter()
+        .filter(|(_, ks)| ks.eq(&KeySchemaType::HashKey))
+        .count()
+    {
+        0 => Err(Error::new(span, "HashKey not found")),
+        2.. => Err(Error::new(span, "only one HashKey is allowed")),
+        1 => Ok(()),
+    }?;
+
+    if key_schemas
+        .iter()
+        .filter(|(_, ks)| ks.eq(&KeySchemaType::RangeKey))
+        .count()
+        > 1
+    {
+        return Err(Error::new(span, "at most one RangeKey is allowed"));
+    };
+
+    Ok(())
+}
+
 fn parse_global_secondary_index_key_schemas(
     field: &Field,
     table: &ParseNestedMeta,
-    global_secondary_indexes: &mut Vec<(Ident, KeySchemaType)>,
+    global_secondary_indexes: &mut BTreeMap<String, Vec<(Ident, KeySchemaType)>>,
     attribute_definitions: &mut Vec<(Ident, ScalarAttributeType)>,
 ) -> Result<()> {
     if table.path.is_ident(GLOBAL_SECONDARY_INDEX_ENTRY) {
+        let mut index_name = String::from("");
         table.parse_nested_meta(|gsi| {
-            parse_key_schemas(field, &gsi, global_secondary_indexes, attribute_definitions)?;
+            let mut key_schemas = vec![];
+            if gsi.path.is_ident(GLOBAL_SECONDARY_INDEX_NAME) {
+                index_name = strip_quote_mark(&gsi.value()?.parse::<Literal>()?.to_string())
+                    .ok_or(gsi.error("invalid index name"))?
+                    .to_string();
+            } else {
+                parse_key_schemas(field, &gsi, &mut key_schemas, attribute_definitions)?;
+            }
+
+            if index_name.is_empty() {
+                return Err(gsi.error("emtpy index name"));
+            };
+
+            global_secondary_indexes
+                .entry(index_name.clone())
+                .or_default()
+                .extend(key_schemas);
             Ok(())
         })?;
     }
@@ -152,9 +169,11 @@ fn parse_global_secondary_index_key_schemas(
 #[cfg(test)]
 mod test {
     use crate::dynamo::attribute_definition::ScalarAttributeType;
+    use crate::dynamo::key_schema::KeySchemaType;
     use crate::table::attr::Attrs;
 
-    use syn::{parse_quote, Fields, FieldsNamed, Result};
+    use proc_macro2::Literal;
+    use syn::{parenthesized, parse_quote, Attribute, Fields, FieldsNamed, Result};
 
     #[test]
     fn test_invalid_key_attrs() -> Result<()> {
@@ -204,26 +223,98 @@ mod test {
                 hk: String,
                 #[table(range_key("N"))]
                 rk: String,
-                #[table(global_secondary_index(range_key("S")))]
-                gsi_hk: String
+                #[table(global_secondary_index(index_name="test_idx", hash_key("S")))]
+                gsi_hk: String,
+                #[table(global_secondary_index(index_name="test_idx2", hash_key("S")))]
+                gsi_hk2: String
             }
         };
         let fields = Fields::Named(fields_named);
         let attr = Attrs::parse_table_fields(&fields)?;
 
-        assert_eq!(attr.hash_key.to_string(), "Hk");
-        assert_eq!(attr.range_key.as_ref().unwrap().to_string(), "Rk");
+        let hk = attr
+            .key_schemas
+            .iter()
+            .find(|(_, k)| k.eq(&KeySchemaType::HashKey))
+            .unwrap();
+        let rk = attr
+            .key_schemas
+            .iter()
+            .find(|(_, k)| k.eq(&KeySchemaType::RangeKey))
+            .unwrap();
+
+        assert_eq!(hk.0.to_string(), "Hk");
+        assert_eq!(rk.0, "Rk");
         assert_eq!(
             attr.attribute_definitions,
             vec![
-                (attr.hash_key, ScalarAttributeType::S),
-                (attr.range_key.unwrap().clone(), ScalarAttributeType::N),
+                (hk.0.clone(), ScalarAttributeType::S),
+                (rk.0.clone(), ScalarAttributeType::N),
                 (
-                    attr.global_secondary_indexes.first().unwrap().clone().0,
+                    attr.global_secondary_indexes
+                        .get("test_idx")
+                        .unwrap()
+                        .first()
+                        .unwrap()
+                        .0
+                        .clone(),
                     ScalarAttributeType::S
-                )
+                ),
+                (
+                    attr.global_secondary_indexes
+                        .get("test_idx2")
+                        .unwrap()
+                        .first()
+                        .unwrap()
+                        .0
+                        .clone(),
+                    ScalarAttributeType::S
+                ),
             ]
         );
+        assert_eq!(
+            attr.global_secondary_indexes.get("test_idx").unwrap().len(),
+            1
+        );
+        assert_eq!(
+            attr.global_secondary_indexes
+                .get("test_idx2")
+                .unwrap()
+                .len(),
+            1
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test() -> Result<()> {
+        let attr: Attribute = parse_quote! {
+            #[table(global_secondary_index(index_name="test_idx", range_key("S")))]
+        };
+
+        if attr.path().is_ident("table") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("global_secondary_index") {
+                    meta.parse_nested_meta(|meta| {
+                        if meta.path.is_ident("index_name") {
+                            println!("{:?}", meta.value()?.parse::<Literal>()?);
+                            Ok(())
+                        } else if meta.path.is_ident("range_key") {
+                            let content;
+                            parenthesized!(content in meta.input);
+                            let scalar_attribute_type: Option<Literal> = content.parse().ok();
+                            println!("{:?}", scalar_attribute_type);
+                            Ok(())
+                        } else {
+                            Err(meta.error("unsupported ingredient"))
+                        }
+                    })
+                } else {
+                    Err(meta.error("unsupported tea property"))
+                }
+            })?;
+        }
 
         Ok(())
     }

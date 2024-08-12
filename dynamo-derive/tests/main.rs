@@ -33,10 +33,14 @@ async fn test_create_table_and_put_item() {
     #[table(table_name = "AwesomeFooTable")]
     struct FooTable<'a> {
         #[table(hash_key("S"))]
-        #[table(global_secondary_index(range_key("S")))]
-        hash_key: String,
+        primary: String,
         #[table(range_key("N"))]
+        #[table(global_secondary_index(index_name = "idx", range_key("N")))]
         range_key: u32,
+        #[table(global_secondary_index(index_name = "idx", hash_key("S")))]
+        hash_key: String,
+        #[table(global_secondary_index(index_name = "idx2", hash_key("S")))]
+        gsi_idx: String,
         a: &'a [Vec<[String; 1]>],
         b: &'a [[Vec<String>; 1]],
         c: Vec<&'a [[u8; 1]]>,
@@ -61,7 +65,7 @@ async fn test_create_table_and_put_item() {
         key_schemas,
         &vec![
             KeySchemaElement::builder()
-                .attribute_name("HashKey")
+                .attribute_name("Primary")
                 .key_type(KeyType::Hash)
                 .build()
                 .unwrap(),
@@ -77,13 +81,23 @@ async fn test_create_table_and_put_item() {
         attribute_definitions,
         &vec![
             AttributeDefinition::builder()
-                .attribute_name("HashKey")
+                .attribute_name("Primary")
                 .attribute_type(ScalarAttributeType::S)
                 .build()
                 .unwrap(),
             AttributeDefinition::builder()
                 .attribute_name("RangeKey")
                 .attribute_type(ScalarAttributeType::N)
+                .build()
+                .unwrap(),
+            AttributeDefinition::builder()
+                .attribute_name("HashKey")
+                .attribute_type(ScalarAttributeType::S)
+                .build()
+                .unwrap(),
+            AttributeDefinition::builder()
+                .attribute_name("GsiIdx")
+                .attribute_type(ScalarAttributeType::S)
                 .build()
                 .unwrap(),
         ]
@@ -95,6 +109,7 @@ async fn test_create_table_and_put_item() {
     map.insert("1".to_string(), vec![inner_map]);
 
     let foo_table = FooTable {
+        primary: "primary".to_string(),
         hash_key: "hash_key".to_string(),
         range_key: 1,
         a: &[vec![[String::from("1")]]],
@@ -107,6 +122,7 @@ async fn test_create_table_and_put_item() {
         bool: false,
         null: None,
         map,
+        gsi_idx: "gsi_idx".to_string(),
     };
 
     let builder = foo_table.put_item(client.put_item());
@@ -168,12 +184,20 @@ async fn test_create_table_and_put_item() {
     assert_eq!(item.get("Map").unwrap(), &AttributeValue::M(expected_map));
 
     let global_secondary_indexes = FooTable::get_global_secondary_index_key_schemas();
+    let idx_gsi = global_secondary_indexes.get("idx").unwrap();
     assert_eq!(
-        global_secondary_indexes,
-        vec![KeySchemaElement::builder()
-            .attribute_name("HashKey")
-            .key_type(KeyType::Range)
-            .build()
-            .unwrap()]
+        idx_gsi,
+        &vec![
+            KeySchemaElement::builder()
+                .attribute_name("HashKey")
+                .key_type(KeyType::Hash)
+                .build()
+                .unwrap(),
+            KeySchemaElement::builder()
+                .attribute_name("RangeKey")
+                .key_type(KeyType::Range)
+                .build()
+                .unwrap()
+        ]
     );
 }

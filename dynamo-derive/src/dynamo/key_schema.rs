@@ -10,6 +10,23 @@ pub enum KeySchemaType {
     RangeKey,
 }
 
+impl PartialOrd for KeySchemaType {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for KeySchemaType {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (KeySchemaType::HashKey, KeySchemaType::HashKey) => std::cmp::Ordering::Equal,
+            (KeySchemaType::RangeKey, KeySchemaType::RangeKey) => std::cmp::Ordering::Equal,
+            (KeySchemaType::HashKey, KeySchemaType::RangeKey) => std::cmp::Ordering::Less,
+            (KeySchemaType::RangeKey, KeySchemaType::HashKey) => std::cmp::Ordering::Greater,
+        }
+    }
+}
+
 impl Display for KeySchemaType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let val = match self {
@@ -34,5 +51,31 @@ pub fn expand_key_schema(id: &Ident, key_type: KeySchemaType) -> TokenStream {
             .key_type(#key_type)
             .build()
             .unwrap()
+    }
+}
+
+#[cfg(test)]
+mod test_key_schema {
+    use crate::dynamo::key_schema::KeySchemaType;
+
+    #[test]
+    fn sort_key_schema() {
+        let mut key_schemas = vec![
+            KeySchemaType::HashKey,
+            KeySchemaType::RangeKey,
+            KeySchemaType::HashKey,
+            KeySchemaType::RangeKey,
+        ];
+
+        key_schemas.sort();
+        assert_eq!(
+            key_schemas,
+            vec![
+                KeySchemaType::HashKey,
+                KeySchemaType::HashKey,
+                KeySchemaType::RangeKey,
+                KeySchemaType::RangeKey,
+            ]
+        );
     }
 }

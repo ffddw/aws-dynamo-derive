@@ -2,7 +2,7 @@ mod attr;
 
 use crate::dynamo::attribute_definition::expand_attribute_definition;
 use crate::dynamo::attribute_value::expand_attribute_value;
-use crate::dynamo::key_schema::{expand_key_schema, KeySchemaType};
+use crate::dynamo::key_schema::expand_key_schema;
 use crate::table::attr::Attrs;
 use crate::util::to_pascal_case;
 
@@ -21,9 +21,9 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         _ => return Err(Error::new(input.span(), "only struct type available")),
     };
 
-    let attrs = Attrs::parse_table_fields(&ds.fields)?;
+    let mut attrs = Attrs::parse_table_fields(&ds.fields)?;
     let keys = extend_keys(&attrs);
-    let gsi_key_schemas = extend_global_secondary_index_key_schemas(&attrs);
+    let gsi_key_schemas = extend_global_secondary_index_key_schemas(&mut attrs);
     let items = extend_items(ds)?;
     let generics = &input.generics;
     let vis = &input.vis;
@@ -40,8 +40,8 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
                     #keys
             }
 
-            #vis fn get_global_secondary_index_key_schemas() -> Vec<aws_sdk_dynamodb::types::KeySchemaElement> {
-                vec![ #gsi_key_schemas ]
+            #vis fn get_global_secondary_index_key_schemas() -> std::collections::BTreeMap<String, Vec<aws_sdk_dynamodb::types::KeySchemaElement>> {
+                #gsi_key_schemas
             }
 
             #vis fn put_item(&self, mut builder: aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder)
@@ -84,13 +84,13 @@ fn extend_keys(attrs: &Attrs) -> TokenStream {
             attribute_definitions.extend(quote! { .attribute_definitions(#attribute_definition) })
         });
 
-    let hash_key_tokens = expand_key_schema(&attrs.hash_key, KeySchemaType::HashKey);
-    key_schemas.extend(quote! { .key_schema(#hash_key_tokens) });
-
-    attrs.range_key.iter().for_each(|range_key| {
-        let range_key_tokens = expand_key_schema(range_key, KeySchemaType::RangeKey);
-        key_schemas.extend(quote! { .key_schema(#range_key_tokens) })
-    });
+    attrs
+        .key_schemas
+        .iter()
+        .for_each(|(ident, key_schema_type)| {
+            let key_schema_token = expand_key_schema(ident, *key_schema_type);
+            key_schemas.extend(quote! { .key_schema(#key_schema_token) })
+        });
 
     quote! {
         #attribute_definitions
@@ -98,18 +98,27 @@ fn extend_keys(attrs: &Attrs) -> TokenStream {
     }
 }
 
-fn extend_global_secondary_index_key_schemas(attrs: &Attrs) -> TokenStream {
-    let mut gsi_key_schemas = TokenStream::new();
+fn extend_global_secondary_index_key_schemas(attrs: &mut Attrs) -> TokenStream {
+    let mut gsi_key_schemas = quote! {
+        let mut gsi_key_schemas: std::collections::BTreeMap<
+            String,
+            Vec<aws_sdk_dynamodb::types::KeySchemaElement>,
+        > = std::collections::BTreeMap::new();
+    };
 
     attrs
         .global_secondary_indexes
-        .iter()
-        .for_each(|(ident, key_schema_type)| {
-            let gsi_key_schemas_token = expand_key_schema(ident, *key_schema_type);
-            gsi_key_schemas.extend(quote! {
-                #gsi_key_schemas_token,
+        .iter_mut()
+        .for_each(|(index_name, items)| {
+            items.sort_by_key(|(_, ty)| *ty);
+            items.iter().for_each(|(ident, key_schema_type)| {
+                let gsi_key_schemas_token = expand_key_schema(ident, *key_schema_type);
+                gsi_key_schemas.extend(quote! {
+                    gsi_key_schemas.entry(#index_name.to_string()).or_default().push(#gsi_key_schemas_token);
+                });
             });
         });
+    gsi_key_schemas.extend(quote! { gsi_key_schemas });
 
     gsi_key_schemas
 }
