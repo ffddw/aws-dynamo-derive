@@ -47,12 +47,12 @@ impl Attrs {
             }
         }
 
-        validate_key_schemas(&key_schemas, fields.span())?;
+        validate_and_sort_key_schemas(&mut key_schemas, fields.span())?;
         global_secondary_indexes
-            .values()
-            .try_for_each(|gsi_key_schemas| validate_key_schemas(gsi_key_schemas, fields.span()))?;
-
-        key_schemas.sort();
+            .iter_mut()
+            .try_for_each(|(_, gsi_key_schemas)| {
+                validate_and_sort_key_schemas(gsi_key_schemas, fields.span())
+            })?;
 
         Ok(Self {
             key_schemas,
@@ -110,7 +110,10 @@ fn parse_key_schemas(
     Ok(())
 }
 
-fn validate_key_schemas(key_schemas: &[(Ident, KeySchemaType)], span: Span) -> Result<()> {
+fn validate_and_sort_key_schemas(
+    key_schemas: &mut Vec<(Ident, KeySchemaType)>,
+    span: Span,
+) -> Result<()> {
     match key_schemas
         .iter()
         .filter(|(_, ks)| ks.eq(&KeySchemaType::HashKey))
@@ -129,6 +132,8 @@ fn validate_key_schemas(key_schemas: &[(Ident, KeySchemaType)], span: Span) -> R
     {
         return Err(Error::new(span, "at most one RangeKey is allowed"));
     };
+
+    key_schemas.sort_by_key(|(_, k)| *k);
 
     Ok(())
 }

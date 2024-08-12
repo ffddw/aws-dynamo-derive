@@ -110,7 +110,6 @@ fn extend_global_secondary_index_key_schemas(attrs: &mut Attrs) -> TokenStream {
         .global_secondary_indexes
         .iter_mut()
         .for_each(|(index_name, items)| {
-            items.sort_by_key(|(_, ty)| *ty);
             items.iter().for_each(|(ident, key_schema_type)| {
                 let gsi_key_schemas_token = expand_key_schema(ident, *key_schema_type);
                 gsi_key_schemas.extend(quote! {
