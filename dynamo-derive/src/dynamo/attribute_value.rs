@@ -54,7 +54,7 @@ fn expand_path(
         .last()
         .ok_or(Error::new(path.span(), "segment not found"))?;
 
-    return Ok(match path_segment.ident.to_string().as_str() {
+    Ok(match path_segment.ident.to_string().as_str() {
         "Vec" => {
             let abga = match &path_segment.arguments {
                 PathArguments::AngleBracketed(abga) => abga,
@@ -180,7 +180,7 @@ fn expand_path(
             ),
             _ => return Err(Error::new(path_segment.ident.span(), "unsupported type")),
         },
-    });
+    })
 }
 
 fn expand_array(
