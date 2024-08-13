@@ -216,3 +216,36 @@ async fn attribute_value_to_rust_types() {
     let foo_table2 = FooTable::from_attribute_value(&items).unwrap();
     assert_eq!(foo_table, foo_table2);
 }
+
+#[tokio::test]
+async fn attribute_value_to_rust_types_checks() {
+    #[derive(Debug, Table, Eq, PartialEq)]
+    struct FooTable {
+        #[table(hash_key("S"))]
+        hash_key: String,
+        vec_of_num: Vec<u128>,
+    }
+
+    let foo_table = FooTable {
+        hash_key: "hk".to_string(),
+        vec_of_num: vec![1],
+    };
+
+    let config = aws_config::load_from_env().await;
+    let client = Client::new(&config);
+
+    let builder = client.put_item();
+    let mut items = FooTable::put_item(&foo_table, builder)
+        .get_item()
+        .as_ref()
+        .unwrap()
+        .clone();
+
+    items
+        .entry("HashKey".to_string())
+        .and_modify(|hk| *hk = AttributeValue::N("wrong".to_string()));
+
+    // if the table attribute is not matched with the given value, returns error
+    let res = FooTable::from_attribute_value(&items);
+    assert!(res.is_err());
+}
