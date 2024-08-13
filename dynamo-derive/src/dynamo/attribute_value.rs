@@ -27,19 +27,15 @@ fn get_collection_and_iterator(id: &Ident, depth: usize) -> (TokenStream, Ident)
     (collection, iterator)
 }
 
-pub fn expand_attribute_value(
-    id: &Ident,
-    ty: &Type,
+pub fn expand_attribute_value<'a>(
+    to_attribute_id: &'a Ident,
+    from_attribute_id: &'a TokenStream,
+    ty: &'a Type,
     depth: usize,
-    attr_value_types: &mut Vec<AttributeValueType>,
-) -> Result<(TokenStream, AttributeValueType)> {
-    let (token_stream, nested_type) = match ty {
-        Type::Path(path) => expand_path(id, path, depth, attr_value_types),
-        Type::Array(array) => expand_array(id, array, depth, attr_value_types),
-        Type::Slice(slice) => expand_slice(id, slice, depth, attr_value_types),
-        Type::Reference(reference) => {
-            expand_attribute_value(id, &reference.elem, depth, attr_value_types)
-        }
+    container: AttributeTypesContainer<'a>,
+) -> Result<(AttributeTypesContainer<'a>, AttributeValueType)> {
+    let (mut container, nested_type) = match ty {
+        Type::Path(path) => expand_path(to_attribute_id, from_attribute_id, path, depth, container),
         _ => Err(Error::new(ty.span(), "unsupported type")),
     }?;
 
