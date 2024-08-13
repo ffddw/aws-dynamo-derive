@@ -90,6 +90,9 @@ There are fairly lots of things to set for GSI compare to other fields, this API
 `get_global_secondary_index_key_schemas` returns BTreeMap of `{ index name: [KeySchemaElement] }` with the value given to attribute. 
 By getting the Vec<KeySchemaElement> using the index_name as key of BTreeMap, you can pass the retrieved value to `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
 
+### AttributeValue conversions
+`from_attribute_value` converts `HashMap<String, AttributeValue>` to 
+
 ### Downsides
 Macro tries to convert all possible types that leeds to extra allocation while iterating items of collection types like Vector or HashMap.
 If the type is super complex and heavy, you might need benchmark before using it. 

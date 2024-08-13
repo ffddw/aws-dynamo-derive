@@ -25,7 +25,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     let keys_token_stream = expand_keys(&attrs);
     let gsi_key_schemas_token_stream = expand_global_secondary_index_key_schemas(&mut attrs);
 
-    let from_attribute_id = quote! { __private_from_attribute_value };
+    let from_attribute_id = quote! { value };
     let attribute_types_containers = get_attribute_types_containers(ds, &from_attribute_id)?;
     let from_attribute_item_stream = expand_from_item(&attribute_types_containers);
     let put_item_token_stream = expand_put_item(&attribute_types_containers);
@@ -51,7 +51,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
 
             #[allow(clippy::map_clone)]
             #[allow(dead_code)]
-            #vis fn from_attribute_value(#from_attribute_id: ::std::collections::HashMap<::std::string::String, ::aws_sdk_dynamodb::types::AttributeValue>) -> Self {
+            #vis fn from_attribute_value(#from_attribute_id: &::std::collections::HashMap<::std::string::String, ::aws_sdk_dynamodb::types::AttributeValue>) -> Self {
                 #from_attribute_item_stream
             }
 

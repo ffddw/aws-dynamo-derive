@@ -161,3 +161,51 @@ async fn test_create_table_and_put_item() {
         ]
     );
 }
+
+#[tokio::test]
+async fn attribute_value_to_rust_types() {
+    #[derive(Debug, Table, Eq, PartialEq)]
+    struct FooTable {
+        #[table(hash_key("S"))]
+        hash_key: String,
+        num: u32,
+        vec_of_num: Vec<u128>,
+        vec_of_string: Vec<String>,
+        nested_vec_of_num: Vec<Vec<u16>>,
+        map: HashMap<String, Vec<i8>>,
+        nested_vec_of_map: Vec<HashMap<String, u128>>,
+        null: Option<()>,
+        bool: bool,
+    }
+
+    let config = aws_config::load_from_env().await;
+    let client = Client::new(&config);
+
+    let mut map = HashMap::new();
+    map.insert("key".to_string(), vec![7]);
+
+    let mut map2 = HashMap::new();
+    map2.insert("key2".to_string(), 9);
+
+    let foo_table = FooTable {
+        hash_key: "hash_key".to_string(),
+        num: 1,
+        vec_of_num: vec![1, 2],
+        vec_of_string: vec!["3".to_string(), "4".to_string()],
+        nested_vec_of_num: vec![vec![5, 6]],
+        map,
+        nested_vec_of_map: vec![map2],
+        null: Some(()),
+        bool: true,
+    };
+
+    let builder = client.put_item();
+    let items = FooTable::put_item(&foo_table, builder)
+        .get_item()
+        .as_ref()
+        .unwrap()
+        .clone();
+    let foo_table2 = FooTable::from_attribute_value(&items);
+    assert_eq!(foo_table, foo_table2);
+}
+
