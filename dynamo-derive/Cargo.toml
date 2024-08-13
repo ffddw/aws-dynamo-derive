@@ -15,3 +15,4 @@ syn = { workspace = true }
 aws-config = { workspace = true }
 aws-sdk-dynamodb = { workspace = true }
 tokio = { workspace = true }
+test-context = { workspace = true }

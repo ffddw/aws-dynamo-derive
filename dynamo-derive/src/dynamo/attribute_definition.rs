@@ -1,4 +1,6 @@
-use crate::dynamo::attribute_value::{expand_attribute_value, AttributeValueType};
+use crate::dynamo::attribute_value::{
+    expand_attribute_value, AttributeTypesContainer, AttributeValueType,
+};
 use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -15,8 +17,11 @@ pub enum ScalarAttributeType {
 
 impl ScalarAttributeType {
     pub fn validate_type(&self, ty: &Type) -> Result<()> {
-        let id = Ident::new("dummy_id", ty.span());
-        let (_, attr_value_ty) = expand_attribute_value(&id, ty, 0, &mut vec![])?;
+        let to_attribute_id = Ident::new("dummy_id", ty.span());
+        let from_attribute_id = quote! { __dummy_id };
+        let container = AttributeTypesContainer::new(&to_attribute_id, ty);
+        let (_, attr_value_ty) =
+            expand_attribute_value(&to_attribute_id, &from_attribute_id, ty, 0, container)?;
 
         let scalar_attr_type = match attr_value_ty {
             AttributeValueType::Blob => Self::B,
@@ -48,9 +53,9 @@ pub fn expand_attribute_definition(id: &Ident, attr_type: &ScalarAttributeType) 
     let ident = Literal::string(&to_pascal_case(&id.to_string()));
 
     let scalar_attr_type = match attr_type {
-        ScalarAttributeType::S => quote! { aws_sdk_dynamodb::types::ScalarAttributeType::S },
-        ScalarAttributeType::N => quote! { aws_sdk_dynamodb::types::ScalarAttributeType::N },
-        ScalarAttributeType::B => quote! { aws_sdk_dynamodb::types::ScalarAttributeType::B },
+        ScalarAttributeType::S => quote! { ::aws_sdk_dynamodb::types::ScalarAttributeType::S },
+        ScalarAttributeType::N => quote! { ::aws_sdk_dynamodb::types::ScalarAttributeType::N },
+        ScalarAttributeType::B => quote! { ::aws_sdk_dynamodb::types::ScalarAttributeType::B },
     };
 
     quote! {

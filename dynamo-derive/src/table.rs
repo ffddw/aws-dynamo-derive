@@ -1,7 +1,7 @@
 mod attr;
 
 use crate::dynamo::attribute_definition::expand_attribute_definition;
-use crate::dynamo::attribute_value::expand_attribute_value;
+use crate::dynamo::attribute_value::{expand_attribute_value, AttributeTypesContainer};
 use crate::dynamo::key_schema::expand_key_schema;
 use crate::table::attr::Attrs;
 use crate::util::to_pascal_case;
@@ -15,16 +15,21 @@ const KEY_TABLE_NAME: &str = "table_name";
 const TABLE_ATTR_META_ENTRY: &str = "table";
 
 pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
-    let table_name = extend_table_name(&input.ident, &input.attrs)?;
+    let table_name_token_stream = expand_table_name(&input.ident, &input.attrs)?;
     let ds = match &input.data {
         Data::Struct(ds) => ds,
         _ => return Err(Error::new(input.span(), "only struct type available")),
     };
 
     let mut attrs = Attrs::parse_table_fields(&ds.fields)?;
-    let keys = extend_keys(&attrs);
-    let gsi_key_schemas = extend_global_secondary_index_key_schemas(&mut attrs);
-    let items = extend_items(ds)?;
+    let keys_token_stream = expand_keys(&attrs);
+    let gsi_key_schemas_token_stream = expand_global_secondary_index_key_schemas(&mut attrs);
+
+    let from_attribute_id = quote! { __private_from_attribute_value };
+    let attribute_types_containers = get_attribute_types_containers(ds, &from_attribute_id)?;
+    let from_attribute_item_stream = expand_from_item(&attribute_types_containers);
+    let put_item_token_stream = expand_put_item(&attribute_types_containers);
+
     let generics = &input.generics;
     let vis = &input.vis;
     let struct_name = &input.ident;
@@ -33,26 +38,28 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
 
     out.extend(quote! {
         impl #generics #struct_name #generics {
-            #vis fn create_table(mut builder: aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder)
-            -> aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder {
+            #vis fn create_table(mut builder: ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder)
+            -> ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder {
                 builder
-                    #table_name
-                    #keys
+                    #table_name_token_stream
+                    #keys_token_stream
             }
 
-            #vis fn get_global_secondary_index_key_schemas() -> std::collections::BTreeMap<String, Vec<aws_sdk_dynamodb::types::KeySchemaElement>> {
-                #gsi_key_schemas
+            #vis fn get_global_secondary_index_key_schemas() -> ::std::collections::BTreeMap<::std::string::String, Vec<::aws_sdk_dynamodb::types::KeySchemaElement>> {
+                #gsi_key_schemas_token_stream
             }
 
-            #vis fn from_attribute_value(value: aws_sdk_dynamodb::types::AttributeValue) -> Self {
-
+            #[allow(clippy::map_clone)]
+            #[allow(dead_code)]
+            #vis fn from_attribute_value(#from_attribute_id: ::std::collections::HashMap<::std::string::String, ::aws_sdk_dynamodb::types::AttributeValue>) -> Self {
+                #from_attribute_item_stream
             }
 
-            #vis fn put_item(&self, mut builder: aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder)
+            #vis fn put_item(&self, mut builder: ::aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder)
             -> aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder {
                 builder
-                    #table_name
-                    #items
+                    #table_name_token_stream
+                    #put_item_token_stream
             }
         }
     });
@@ -60,7 +67,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     Ok(out)
 }
 
-fn extend_table_name(id: &Ident, attrs: &[Attribute]) -> Result<TokenStream> {
+fn expand_table_name(id: &Ident, attrs: &[Attribute]) -> Result<TokenStream> {
     let mut table_name = LitStr::new(&to_pascal_case(&id.to_string()), id.span());
 
     for attr in attrs {
@@ -76,7 +83,7 @@ fn extend_table_name(id: &Ident, attrs: &[Attribute]) -> Result<TokenStream> {
     Ok(quote! { .table_name(#table_name) })
 }
 
-fn extend_keys(attrs: &Attrs) -> TokenStream {
+fn expand_keys(attrs: &Attrs) -> TokenStream {
     let mut attribute_definitions = TokenStream::new();
     let mut key_schemas = TokenStream::new();
 
@@ -102,7 +109,7 @@ fn extend_keys(attrs: &Attrs) -> TokenStream {
     }
 }
 
-fn extend_global_secondary_index_key_schemas(attrs: &mut Attrs) -> TokenStream {
+fn expand_global_secondary_index_key_schemas(attrs: &mut Attrs) -> TokenStream {
     let mut gsi_key_schemas = quote! {
         let mut gsi_key_schemas: std::collections::BTreeMap<
             String,
@@ -126,8 +133,11 @@ fn extend_global_secondary_index_key_schemas(attrs: &mut Attrs) -> TokenStream {
     gsi_key_schemas
 }
 
-fn extend_items(ds: &DataStruct) -> Result<TokenStream> {
-    let mut items = TokenStream::new();
+fn get_attribute_types_containers<'a>(
+    ds: &'a DataStruct,
+    from_attribute_id: &'a TokenStream,
+) -> Result<Vec<AttributeTypesContainer<'a>>> {
+    let mut containers = vec![];
 
     for field in &ds.fields {
         let ty = &field.ty;
@@ -135,14 +145,46 @@ fn extend_items(ds: &DataStruct) -> Result<TokenStream> {
             .ident
             .as_ref()
             .ok_or(Error::new(field.ident.span(), "field ident not found"))?;
-        let ident_lit = Literal::string(&to_pascal_case(&ident.to_string()));
-        let mut attr_value_types = vec![];
-        let (item, _) = expand_attribute_value(ident, ty, 0, &mut attr_value_types)?.clone();
-
-        items.extend(quote! {
-            .item(#ident_lit.to_string(), #item)
-        });
+        let container = AttributeTypesContainer::new(ident, ty);
+        let (container, _) = expand_attribute_value(ident, from_attribute_id, ty, 0, container)?;
+        containers.push(container);
     }
 
-    Ok(items)
+    Ok(containers)
+}
+
+fn expand_put_item(attribute_types_containers: &[AttributeTypesContainer]) -> TokenStream {
+    let mut to_item_token_stream = TokenStream::new();
+
+    attribute_types_containers.iter().for_each(|container| {
+        let ident_lit = Literal::string(&to_pascal_case(&container.field_ident.to_string()));
+        let item = &container.to_attribute_token_stream;
+        to_item_token_stream.extend(quote! {
+            .item(#ident_lit.to_string(), #item)
+        });
+    });
+
+    to_item_token_stream
+}
+
+pub fn expand_from_item(attribute_types_containers: &[AttributeTypesContainer]) -> TokenStream {
+    let mut fields_token_stream = TokenStream::new();
+    let mut out_token_stream = TokenStream::new();
+
+    attribute_types_containers.iter().for_each(|container| {
+        let field_ident = container.field_ident;
+        let from_attribute_token_stream = &container.from_attribute_token_stream;
+
+        fields_token_stream.extend(quote! {
+            #field_ident: #from_attribute_token_stream,
+        });
+    });
+
+    out_token_stream.extend(quote! {
+        Self {
+            #fields_token_stream
+        }
+    });
+
+    out_token_stream
 }

@@ -12,7 +12,6 @@ use syn::{parenthesized, Error, Field, Fields, LitStr, Result};
 const GLOBAL_SECONDARY_INDEX_ENTRY: &str = "global_secondary_index";
 const GLOBAL_SECONDARY_INDEX_NAME: &str = "index_name";
 
-#[derive(Debug)]
 pub struct Attrs {
     pub key_schemas: Vec<(Ident, KeySchemaType)>,
     pub attribute_definitions: Vec<(Ident, ScalarAttributeType)>,

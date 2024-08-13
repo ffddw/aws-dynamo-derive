@@ -31,7 +31,7 @@ use std::collections::HashMap;
 async fn test_create_table_and_put_item() {
     #[derive(Table)]
     #[table(table_name = "AwesomeFooTable")]
-    struct FooTable<'a> {
+    struct FooTable {
         #[table(hash_key("S"))]
         primary: String,
         #[table(range_key("N"))]
@@ -41,14 +41,9 @@ async fn test_create_table_and_put_item() {
         hash_key: String,
         #[table(global_secondary_index(index_name = "idx2", hash_key("S")))]
         gsi_idx: String,
-        a: &'a [Vec<[String; 1]>],
-        b: &'a [[Vec<String>; 1]],
-        c: Vec<&'a [[u8; 1]]>,
-        d: Vec<[&'a [i16]; 1]>,
-        e: [&'a [Vec<u32>]; 1],
-        f: [Vec<&'a [i64]>; 1],
-        blob: &'a [Vec<Blob>; 1],
+        a: Vec<Vec<Vec<String>>>,
         bool: bool,
+        blob: Vec<Vec<Blob>>,
         null: Option<()>,
         map: HashMap<String, Vec<HashMap<String, String>>>,
     }
@@ -112,17 +107,12 @@ async fn test_create_table_and_put_item() {
         primary: "primary".to_string(),
         hash_key: "hash_key".to_string(),
         range_key: 1,
-        a: &[vec![[String::from("1")]]],
-        b: &[[vec![String::from("1")]]],
-        c: vec![&[[1]]],
-        d: vec![[&[1]]],
-        e: [&[vec![1]]],
-        f: [vec![&[1]]],
-        blob: &[vec![Blob::new(vec![])]],
-        bool: false,
+        blob: vec![vec![Blob::new(vec![])]],
         null: None,
         map,
         gsi_idx: "gsi_idx".to_string(),
+        a: vec![vec![vec!["1".to_string()]]],
+        bool: false,
     };
 
     let builder = foo_table.put_item(client.put_item());
@@ -134,36 +124,6 @@ async fn test_create_table_and_put_item() {
     assert_eq!(
         item.get("A").unwrap(),
         &AttributeValue::L(vec![AttributeValue::L(vec![AttributeValue::Ss(vec![
-            "1".to_string()
-        ])])]),
-    );
-    assert_eq!(
-        item.get("B").unwrap(),
-        &AttributeValue::L(vec![AttributeValue::L(vec![AttributeValue::Ss(vec![
-            "1".to_string()
-        ])])]),
-    );
-    assert_eq!(
-        item.get("C").unwrap(),
-        &AttributeValue::L(vec![AttributeValue::L(vec![AttributeValue::Ns(vec![
-            "1".to_string()
-        ])])]),
-    );
-    assert_eq!(
-        item.get("D").unwrap(),
-        &AttributeValue::L(vec![AttributeValue::L(vec![AttributeValue::Ns(vec![
-            "1".to_string()
-        ])])]),
-    );
-    assert_eq!(
-        item.get("E").unwrap(),
-        &AttributeValue::L(vec![AttributeValue::L(vec![AttributeValue::Ns(vec![
-            "1".to_string()
-        ])])]),
-    );
-    assert_eq!(
-        item.get("F").unwrap(),
-        &AttributeValue::L(vec![AttributeValue::L(vec![AttributeValue::Ns(vec![
             "1".to_string()
         ])])]),
     );

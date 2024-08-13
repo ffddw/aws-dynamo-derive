@@ -41,8 +41,8 @@ pub fn expand_key_schema(id: &Ident, key_type: KeySchemaType) -> TokenStream {
     let ident = Literal::string(&to_pascal_case(&id.to_string()));
 
     let key_type = match key_type {
-        KeySchemaType::HashKey => quote! { aws_sdk_dynamodb::types::KeyType::Hash },
-        KeySchemaType::RangeKey => quote! { aws_sdk_dynamodb::types::KeyType::Range },
+        KeySchemaType::HashKey => quote! { ::aws_sdk_dynamodb::types::KeyType::Hash },
+        KeySchemaType::RangeKey => quote! { ::aws_sdk_dynamodb::types::KeyType::Range },
     };
 
     quote! {
