@@ -5,6 +5,7 @@ helper crate for [aws-sdk-dynamodb](https://docs.rs/aws-sdk-dynamodb/latest/aws_
 Generates conversion codes from rust primitive types to aws dynamo types.
 
 ## Examples
+
 ```rust
 use crab_box_dynamo_derive::Table;
 
@@ -47,7 +48,7 @@ async fn main() {
     let create_table_builder = FooTable::create_table(client.create_table())
         .global_secondary_indexes(gsi_builder)
         .provisioned_throughput(provisioned_throughput);
-    
+
     let res = create_table_builder.send().await;
 
     let foo = FooTable {
@@ -62,19 +63,23 @@ async fn main() {
 ```
 
 ### KeySchemas and AttributeDefinitions
+
 Struct fields decorated with `#[table(range_key("N"))]` adds `ScalarAttributeType::N` AttributionDefinitions
-as well as `KeyType::Range` KeySchema. 
+as well as `KeyType::Range` KeySchema.
 
 Available KeySchema
+
 - `range_key`
 - `hash_key`
 
 Available AttributeDefinition
+
 - `"B"`
 - `"N"`
 - `"S"`
 
 ### AttributeValue
+
 - `&str`, `String` -> `S`
 - `bool` -> `BOOL`
 - `aws_sdk_dynamodb::primitives::Blob` -> `B`
@@ -86,13 +91,20 @@ Available AttributeDefinition
 - `HashMap<String, T>` -> `M`, automatically converts inner value of HashMap to AttributeValue types.
 
 ### GlobalSecondaryIndex
+
 There are fairly lots of things to set for GSI compare to other fields, this API only gives you for KeySchemaElement.
-`get_global_secondary_index_key_schemas` returns BTreeMap of `{ index name: [KeySchemaElement] }` with the value given to attribute. 
-By getting the Vec<KeySchemaElement> using the index_name as key of BTreeMap, you can pass the retrieved value to `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
+`get_global_secondary_index_key_schemas` returns BTreeMap of `{ index name: [KeySchemaElement] }` with the value given
+to attribute.
+By getting the Vec<KeySchemaElement> using the index_name as key of BTreeMap, you can pass the retrieved value
+to `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
 
 ### AttributeValue conversions
-`from_attribute_value` converts `HashMap<String, AttributeValue>` to 
+
+`from_attribute_value` converts `HashMap<String, AttributeValue>` to Rust types. If any of type of field is not matched
+to given AttributeValue type, returns `Err(AttributeValue)`.
 
 ### Downsides
-Macro tries to convert all possible types that leeds to extra allocation while iterating items of collection types like Vector or HashMap.
+
+Macro tries to convert all possible types that leeds to extra allocation while iterating items of collection types like
+Vector or HashMap.
 If the type is super complex and heavy, you might need benchmark before using it. 
