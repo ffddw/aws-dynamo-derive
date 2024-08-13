@@ -38,20 +38,26 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
 
     out.extend(quote! {
         impl #generics #struct_name #generics {
-            #vis fn create_table(mut builder: ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder)
-            -> ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder {
+            #vis fn create_table(
+                mut builder: ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder
+            ) -> ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder {
                 builder
                     #table_name_token_stream
                     #keys_token_stream
             }
 
-            #vis fn get_global_secondary_index_key_schemas() -> ::std::collections::BTreeMap<::std::string::String, Vec<::aws_sdk_dynamodb::types::KeySchemaElement>> {
+            #vis fn get_global_secondary_index_key_schemas()
+                -> ::std::collections::BTreeMap<::std::string::String, Vec<::aws_sdk_dynamodb::types::KeySchemaElement>> {
                 #gsi_key_schemas_token_stream
             }
 
             #[allow(clippy::map_clone)]
+            #[allow(clippy::needless_question_mark)]
             #[allow(dead_code)]
-            #vis fn from_attribute_value(#from_attribute_id: &::std::collections::HashMap<::std::string::String, ::aws_sdk_dynamodb::types::AttributeValue>) -> Self {
+            #vis fn from_attribute_value(
+                #from_attribute_id: &::std::collections::HashMap<::std::string::String, ::aws_sdk_dynamodb::types::AttributeValue>
+            )
+                -> Result<Self, ::aws_sdk_dynamodb::types::AttributeValue> {
                 #from_attribute_item_stream
             }
 
@@ -181,9 +187,9 @@ pub fn expand_from_item(attribute_types_containers: &[AttributeTypesContainer]) 
     });
 
     out_token_stream.extend(quote! {
-        Self {
+        Ok(Self {
             #fields_token_stream
-        }
+        })
     });
 
     out_token_stream

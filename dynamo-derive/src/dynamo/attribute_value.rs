@@ -1,6 +1,6 @@
 use crate::util::to_pascal_case;
 
-use proc_macro2::{Ident, Literal, Span, TokenStream};
+use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use syn::spanned::Spanned;
 use syn::{Error, GenericArgument, PathArguments, Result, Type, TypePath};
@@ -62,7 +62,9 @@ fn get_iter_variants(
 
     if depth == 0 {
         to_attribute_collection = quote! { self.#to_attribute_id };
-        from_attribute_collection = quote! { #from_attribute_id.get(#field_id_as_key).unwrap() };
+        from_attribute_collection = quote! {
+            #from_attribute_id.get(#field_id_as_key).ok_or(::aws_sdk_dynamodb::types::AttributeValue::Null(true))?
+        };
     };
 
     let iterator = format_ident!("{}private_iterator", "_".repeat(depth + 1));
@@ -143,7 +145,7 @@ fn expand_path<'a>(
                     )?;
 
                     let (expanded_container, nested_type) =
-                        expand_plural_nested(container, nested_type, &iter_variants, ty.span())?;
+                        expand_plural_nested(container, nested_type, &iter_variants)?;
 
                     (expanded_container, nested_type)
                 }
@@ -219,12 +221,15 @@ fn expand_path<'a>(
                     container.from_attribute_token_stream = quote! {
                         {
                             let mut __private_tobe_map = HashMap::new();
-                            #from_attribute_collection.as_m().unwrap().iter().for_each(|(__private_key, #iterator)| {
-                                let __nested_value = #expanded_from_attribute_token_stream;
-                                __private_tobe_map.insert(__private_key.to_string(), __nested_value);
-                            });
-                            __private_tobe_map
-                        }
+                            #from_attribute_collection.as_m().map_err(|e| e.clone())?
+                                .iter()
+                                .try_for_each(|(__private_key, #iterator)| {
+                                    let __nested_value = #expanded_from_attribute_token_stream;
+                                    __private_tobe_map.insert(__private_key.to_string(), __nested_value);
+                                    Ok(())
+                            })?;
+                            Ok(__private_tobe_map)
+                        }?
                     };
                     (container, AttributeValueType::Map)
                 }
@@ -238,16 +243,19 @@ fn expand_path<'a>(
                         ::aws_sdk_dynamodb::types::AttributeValue::N(#to_attribute_collection.to_string())
                     };
                     container.from_attribute_token_stream = quote! {
-                        #from_attribute_collection.as_n().unwrap().parse().unwrap()
+                        #from_attribute_collection.as_n()
+                            .map_err(|e| e.clone())?
+                            .parse()
+                            .map_err(|_| ::aws_sdk_dynamodb::types::AttributeValue::Null(true))?
                     };
                     AttributeValueType::Number
                 }
-                "String" | "str" => {
+                "String" => {
                     container.to_attribute_token_stream = quote! {
                         ::aws_sdk_dynamodb::types::AttributeValue::S(#to_attribute_collection.to_string())
                     };
                     container.from_attribute_token_stream = quote! {
-                        #from_attribute_collection.as_s().unwrap().to_string()
+                        #from_attribute_collection.as_s().map_err(|e| e.clone())?.to_string()
                     };
                     AttributeValueType::String
                 }
@@ -256,16 +264,16 @@ fn expand_path<'a>(
                         ::aws_sdk_dynamodb::types::AttributeValue::B(#to_attribute_collection.clone())
                     };
                     container.from_attribute_token_stream = quote! {
-                        #from_attribute_collection.as_b().unwrap().clone()
+                        #from_attribute_collection.as_b().map_err(|e| e.clone())?.clone()
                     };
                     AttributeValueType::Blob
                 }
                 "bool" => {
                     container.to_attribute_token_stream = quote! {
-                        ::aws_sdk_dynamodb::types::AttributeValue::Bool(#to_attribute_collection)
+                        ::aws_sdk_dynamodb::types::AttributeValue::Bool(#to_attribute_collection.clone())
                     };
                     container.from_attribute_token_stream = quote! {
-                        *#from_attribute_collection.as_bool().unwrap()
+                        *#from_attribute_collection.as_bool().map_err(|e| e.clone())?
                     };
                     AttributeValueType::Bool
                 }
@@ -274,7 +282,7 @@ fn expand_path<'a>(
                         ::aws_sdk_dynamodb::types::AttributeValue::Null( #to_attribute_collection.is_none() )
                     };
                     container.from_attribute_token_stream = quote! {
-                        if *#from_attribute_collection.as_null().unwrap() {
+                        if *#from_attribute_collection.as_null().map_err(|e| e.clone())? {
                             None
                         } else {
                             Some(())
@@ -293,7 +301,6 @@ fn expand_plural_nested<'a>(
     mut container: AttributeTypesContainer<'a>,
     nested_type: AttributeValueType,
     iter_variants: &IterVariants,
-    span: Span,
 ) -> Result<(AttributeTypesContainer<'a>, AttributeValueType)> {
     let IterVariants {
         to_attribute_collection,
@@ -314,10 +321,10 @@ fn expand_plural_nested<'a>(
             container.from_attribute_token_stream = quote! {
                 #from_attribute_collection
                     .as_bs()
-                    .unwrap()
+                    .map_err(|e| e.clone())?
                     .iter()
-                    .map(|#iterator| #iterator.clone())
-                    .collect()
+                    .map(|#iterator| Ok(#iterator.clone()))
+                    .collect::<Result<Vec<_>, _>>()?
             };
             AttributeValueType::BlobList
         }
@@ -334,10 +341,10 @@ fn expand_plural_nested<'a>(
             container.from_attribute_token_stream = quote! {
                   #from_attribute_collection
                     .as_ss()
-                    .unwrap()
+                    .map_err(|e| e.clone())?
                     .iter()
-                    .map(|#iterator| #iterator.to_string())
-                    .collect()
+                    .map(|#iterator| Ok(#iterator.to_string()))
+                    .collect::<Result<Vec<_>, _>>()?
             };
             AttributeValueType::StringList
         }
@@ -353,17 +360,18 @@ fn expand_plural_nested<'a>(
             container.from_attribute_token_stream = quote! {
                 #from_attribute_collection
                     .as_ns()
-                    .unwrap()
+                    .map_err(|e| e.clone())?
                     .iter()
-                    .map(|#iterator| #iterator.parse().unwrap())
-                    .collect()
+                    .map(|#iterator| #iterator.parse().map_err(|_| ::aws_sdk_dynamodb::types::AttributeValue::Null(true)))
+                    .collect::<Result<Vec<_>, _>>()?
             };
             AttributeValueType::NumberList
         }
-
         AttributeValueType::BlobList
         | AttributeValueType::List
         | AttributeValueType::Map
+        | AttributeValueType::Null
+        | AttributeValueType::Bool
         | AttributeValueType::NumberList
         | AttributeValueType::StringList => {
             let nested_to_attribute_token_stream = container.to_attribute_token_stream;
@@ -379,14 +387,13 @@ fn expand_plural_nested<'a>(
             container.from_attribute_token_stream = quote! {
                 #from_attribute_collection
                     .as_l()
-                    .unwrap()
+                    .map_err(|e| e.clone())?
                     .iter()
-                    .map(|#iterator| #nested_from_attribute_token_stream)
-                    .collect()
+                    .map(|#iterator| Ok(#nested_from_attribute_token_stream))
+                    .collect::<Result<Vec<_>, _>>()?
             };
             AttributeValueType::List
         }
-        _ => return Err(Error::new(span, "unsupported type")),
     };
 
     Ok((container, attribute_value_type))
@@ -496,7 +503,7 @@ mod test_attribute_value {
 
         let bool_type = parse_quote! { bool };
         let expected = quote! {
-            ::aws_sdk_dynamodb::types::AttributeValue::Bool(self.foo)
+            ::aws_sdk_dynamodb::types::AttributeValue::Bool(self.foo.clone())
         };
         let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
         let (ts, root_ty) = expand_attribute_value(

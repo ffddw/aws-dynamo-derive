@@ -45,6 +45,7 @@ async fn test_create_table_and_put_item() {
         bool: bool,
         blob: Vec<Vec<Blob>>,
         null: Option<()>,
+        nulls: Vec<Option<()>>,
         map: HashMap<String, Vec<HashMap<String, String>>>,
     }
 
@@ -109,6 +110,7 @@ async fn test_create_table_and_put_item() {
         range_key: 1,
         blob: vec![vec![Blob::new(vec![])]],
         null: None,
+        nulls: vec![Some(()), None],
         map,
         gsi_idx: "gsi_idx".to_string(),
         a: vec![vec![vec!["1".to_string()]]],
@@ -170,12 +172,15 @@ async fn attribute_value_to_rust_types() {
         hash_key: String,
         num: u32,
         vec_of_num: Vec<u128>,
-        vec_of_string: Vec<String>,
+        vec_of_string: Vec<Vec<String>>,
         nested_vec_of_num: Vec<Vec<u16>>,
         map: HashMap<String, Vec<i8>>,
         nested_vec_of_map: Vec<HashMap<String, u128>>,
-        null: Option<()>,
+        nulls: Vec<Option<()>>,
+        blobs: Vec<Blob>,
+        blob: Blob,
         bool: bool,
+        bools: Vec<bool>,
     }
 
     let config = aws_config::load_from_env().await;
@@ -191,12 +196,15 @@ async fn attribute_value_to_rust_types() {
         hash_key: "hash_key".to_string(),
         num: 1,
         vec_of_num: vec![1, 2],
-        vec_of_string: vec!["3".to_string(), "4".to_string()],
+        vec_of_string: vec![vec!["3".to_string(), "4".to_string()]],
         nested_vec_of_num: vec![vec![5, 6]],
         map,
         nested_vec_of_map: vec![map2],
-        null: Some(()),
+        nulls: vec![Some(()), None],
+        blob: Blob::new(vec![]),
+        blobs: vec![Blob::new(vec![])],
         bool: true,
+        bools: vec![],
     };
 
     let builder = client.put_item();
@@ -205,7 +213,6 @@ async fn attribute_value_to_rust_types() {
         .as_ref()
         .unwrap()
         .clone();
-    let foo_table2 = FooTable::from_attribute_value(&items);
+    let foo_table2 = FooTable::from_attribute_value(&items).unwrap();
     assert_eq!(foo_table, foo_table2);
 }
-
