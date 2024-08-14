@@ -4,27 +4,10 @@ use proc_macro2::{Ident, Literal, TokenStream};
 use quote::quote;
 use std::fmt::{Display, Formatter};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum KeySchemaType {
     HashKey,
     RangeKey,
-}
-
-impl PartialOrd for KeySchemaType {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for KeySchemaType {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            (KeySchemaType::HashKey, KeySchemaType::HashKey) => std::cmp::Ordering::Equal,
-            (KeySchemaType::RangeKey, KeySchemaType::RangeKey) => std::cmp::Ordering::Equal,
-            (KeySchemaType::HashKey, KeySchemaType::RangeKey) => std::cmp::Ordering::Less,
-            (KeySchemaType::RangeKey, KeySchemaType::HashKey) => std::cmp::Ordering::Greater,
-        }
-    }
 }
 
 impl Display for KeySchemaType {

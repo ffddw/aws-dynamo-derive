@@ -13,12 +13,12 @@ use crab_box_dynamo_derive::Table;
 async fn main() {
     #[derive(Table)]
     #[table(table_name = "AwesomeFooTable")]
-    struct FooTable<'a> {
+    struct FooTable {
         #[table(range_key("N"))]
         index: u64,
         #[table(hash_key("S"))]
         #[table(global_secondary_index(index_name = "foo_index_1", hash_key("S")))]
-        name: &'a str,
+        name: String,
     }
 
     let config = aws_config::load_from_env().await;
@@ -53,7 +53,7 @@ async fn main() {
 
     let foo = FooTable {
         index: 1,
-        name: "foo",
+        name: "foo".to_string(),
     };
 
     // Do some extra work with put_item_builder
@@ -91,12 +91,16 @@ Available AttributeDefinitions:
 
 ### GlobalSecondaryIndex
 
-There are many things to set for GSI compared to other fields. This API only provides KeySchemaElement. `get_global_secondary_index_key_schemas` returns a `BTreeMap` of `{ index name: [KeySchemaElement] }` with the value given to the attribute. By getting the `Vec<KeySchemaElement>` using the `index_name` as the key of `BTreeMap`, you can pass the retrieved value to the `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
+There are many things to set for GSI compared to other fields. This API only provides KeySchemaElement. 
+`get_global_secondary_index_key_schemas` returns a `BTreeMap` of `{ index name: [KeySchemaElement] }` with the value given to the attribute. 
+By getting the `Vec<KeySchemaElement>` using the `index_name` as the key of `BTreeMap`, you can pass the retrieved value to the `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
 
 ### AttributeValue conversions
 
-`from_attribute_value` converts `HashMap<String, AttributeValue>` to Rust types. If any field type does not match the given `AttributeValue` type, it returns `Err(AttributeValue)`.
+`from_attribute_value` converts `HashMap<String, AttributeValue>` to Rust types. 
+If any field type does not match the given `AttributeValue` type, it returns `Err(AttributeValue)`.
 
 ### Downsides
 
-The macro tries to convert all possible types, which leads to extra allocation while iterating items of collection types like `Vector` or `HashMap`. If the type is super complex and heavy, you might need to benchmark before using it.
+The macro tries to convert all possible types, which leads to extra allocation while iterating items of collection types like `Vector` or `HashMap`. 
+If the type is super complex and heavy, you might need to benchmark before using it.

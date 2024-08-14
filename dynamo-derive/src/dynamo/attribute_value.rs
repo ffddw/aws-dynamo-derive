@@ -24,7 +24,6 @@ pub struct AttributeTypesContainer<'a> {
     pub field_ident: &'a Ident,
     /// type of field
     pub ty: &'a Type,
-    pub types: Vec<&'a Type>,
     /// from Rust type to AttributeValueType
     pub to_attribute_token_stream: TokenStream,
     /// from AttributeValueType to Rust type
@@ -36,7 +35,6 @@ impl<'a> AttributeTypesContainer<'a> {
         Self {
             field_ident: ident,
             ty,
-            types: vec![],
             to_attribute_token_stream: TokenStream::new(),
             from_attribute_token_stream: TokenStream::new(),
         }
@@ -88,7 +86,6 @@ pub fn expand_attribute_value<'a>(
         _ => Err(Error::new(ty.span(), "unsupported type")),
     }?;
 
-    container.types.push(ty);
     container.ty = ty;
 
     Ok((container, nested_type))

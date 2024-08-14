@@ -21,13 +21,13 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         _ => return Err(Error::new(input.span(), "only struct type available")),
     };
 
-    let mut attrs = Attrs::parse_table_fields(&ds.fields)?;
+    let attrs = Attrs::parse_table_fields(&ds.fields)?;
     let keys_token_stream = expand_keys(&attrs);
-    let gsi_key_schemas_token_stream = expand_global_secondary_index_key_schemas(&mut attrs);
+    let gsi_key_schemas_token_stream = expand_global_secondary_index_key_schemas(&attrs);
 
-    let from_attribute_id = quote! { value };
-    let attribute_types_containers = get_attribute_types_containers(ds, &from_attribute_id)?;
-    let from_attribute_item_stream = expand_from_item(&attribute_types_containers);
+    let from_attribute_ident = quote! { value };
+    let attribute_types_containers = get_attribute_types_containers(ds, &from_attribute_ident)?;
+    let from_attribute_value_stream = expand_from_item(&attribute_types_containers);
     let put_item_token_stream = expand_put_item(&attribute_types_containers);
 
     let generics = &input.generics;
@@ -55,10 +55,10 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
             #[allow(clippy::needless_question_mark)]
             #[allow(dead_code)]
             #vis fn from_attribute_value(
-                #from_attribute_id: &::std::collections::HashMap<::std::string::String, ::aws_sdk_dynamodb::types::AttributeValue>
+                #from_attribute_ident: &::std::collections::HashMap<::std::string::String, ::aws_sdk_dynamodb::types::AttributeValue>
             )
                 -> Result<Self, ::aws_sdk_dynamodb::types::AttributeValue> {
-                #from_attribute_item_stream
+                #from_attribute_value_stream
             }
 
             #vis fn put_item(&self, mut builder: ::aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder)
@@ -115,7 +115,7 @@ fn expand_keys(attrs: &Attrs) -> TokenStream {
     }
 }
 
-fn expand_global_secondary_index_key_schemas(attrs: &mut Attrs) -> TokenStream {
+fn expand_global_secondary_index_key_schemas(attrs: &Attrs) -> TokenStream {
     let mut gsi_key_schemas = quote! {
         let mut gsi_key_schemas: std::collections::BTreeMap<
             String,
@@ -125,7 +125,7 @@ fn expand_global_secondary_index_key_schemas(attrs: &mut Attrs) -> TokenStream {
 
     attrs
         .global_secondary_indexes
-        .iter_mut()
+        .iter()
         .for_each(|(index_name, items)| {
             items.iter().for_each(|(ident, key_schema_type)| {
                 let gsi_key_schemas_token = expand_key_schema(ident, *key_schema_type);
