@@ -1,7 +1,6 @@
 mod container;
 mod parser;
 
-use std::collections::HashMap;
 pub use container::Container;
 
 use crate::dynamo::attribute_definition::expand_attribute_definition;
@@ -12,8 +11,9 @@ use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{format_ident, quote};
+use std::collections::HashMap;
 use syn::spanned::Spanned;
-use syn::{Attribute, Data, DataStruct, DeriveInput, Error, LitStr, Result};
+use syn::{Attribute, Data, DataStruct, DeriveInput, Error, LitStr, Result, Visibility};
 
 const KEY_TABLE_NAME: &str = "table_name";
 const TABLE_ATTR_META_ENTRY: &str = "table";
@@ -40,7 +40,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     let from_attribute_ident = quote! { value };
     let attribute_types_containers = get_attribute_types_containers(ds, &from_attribute_ident)?;
 
-    let prelude_structs = expand_prelude_structs(ident, &attribute_types_containers);
+    let prelude_structs = expand_prelude_structs(vis, ident, &attribute_types_containers);
 
     // expands functions
     let (
@@ -60,7 +60,11 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     );
 
     Ok(quote! {
-        #vis #( #prelude_structs )*
+         #( #prelude_structs )*
+
+        #[allow(clippy::map_clone)]
+        #[allow(clippy::needless_question_mark)]
+        #[allow(dead_code)]
         impl #generics #ident #generics {
             #vis #get_table_name_fn
             #vis #create_table_fn
@@ -224,9 +228,6 @@ fn expand_from_attribute_value_fn(
         .collect::<Vec<_>>();
 
     quote! {
-        #[allow(clippy::map_clone)]
-        #[allow(clippy::needless_question_mark)]
-        #[allow(dead_code)]
         fn from_attribute_value(
             #from_attribute_ident: &::std::collections::HashMap<
             ::std::string::String,
@@ -262,7 +263,11 @@ fn expand_put_item_fn(
     }
 }
 
-fn expand_prelude_structs(struct_name: &Ident, containers: &[Container]) -> Vec<TokenStream> {
+fn expand_prelude_structs(
+    vis: &Visibility,
+    struct_name: &Ident,
+    containers: &[Container],
+) -> Vec<TokenStream> {
     let primary_key_fields = containers
         .iter()
         .filter(|c| !c.key_schemas.is_empty())
@@ -276,7 +281,8 @@ fn expand_prelude_structs(struct_name: &Ident, containers: &[Container]) -> Vec<
     let primary_key_input_struct_name =
         format_ident!("{struct_name}{PRIMARY_KEY_INPUT_STRUCT_POSTFIX}",);
     let primary_key_input_struct = quote! {
-        struct #primary_key_input_struct_name {
+        #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+        #vis struct #primary_key_input_struct_name {
             #( #primary_key_fields, )*
         }
     };

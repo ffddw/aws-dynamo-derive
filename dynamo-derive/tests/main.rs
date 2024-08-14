@@ -31,7 +31,7 @@ use std::collections::HashMap;
 async fn test_create_table_and_put_item() {
     #[derive(Table)]
     #[table(table_name = "AwesomeFooTable")]
-    struct FooTable {
+    pub struct FooTable {
         #[table(range_key("N"))]
         #[table(global_secondary_index(index_name = "idx", range_key("N")))]
         range_key: u32,
@@ -168,7 +168,7 @@ async fn test_create_table_and_put_item() {
 #[tokio::test]
 async fn attribute_value_to_rust_types() {
     #[derive(Debug, Table, Eq, PartialEq)]
-    struct FooTable {
+    pub struct FooTable {
         #[table(hash_key("S"))]
         hash_key: String,
         num: u32,
@@ -221,7 +221,7 @@ async fn attribute_value_to_rust_types() {
 #[tokio::test]
 async fn attribute_value_to_rust_types_checks() {
     #[derive(Debug, Table, Eq, PartialEq)]
-    struct FooTable {
+    pub struct FooTable {
         #[table(hash_key("S"))]
         hash_key: String,
         vec_of_num: Vec<u128>,
@@ -254,7 +254,7 @@ async fn attribute_value_to_rust_types_checks() {
 #[tokio::test]
 async fn test_get_primary_keys() {
     #[derive(Debug, Table, Eq, PartialEq)]
-    struct FooTable {
+    pub struct FooTable {
         #[table(range_key("N"))]
         range_key: u32,
         #[table(hash_key("S"))]
