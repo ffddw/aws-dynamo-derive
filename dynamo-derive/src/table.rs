@@ -15,7 +15,7 @@ const KEY_TABLE_NAME: &str = "table_name";
 const TABLE_ATTR_META_ENTRY: &str = "table";
 
 pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
-    let table_name_token_stream = expand_table_name(&input.ident, &input.attrs)?;
+    let table_name = get_table_name(&input.ident, &input.attrs)?;
     let ds = match &input.data {
         Data::Struct(ds) => ds,
         _ => return Err(Error::new(input.span(), "only struct type available")),
@@ -42,7 +42,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
                 mut builder: ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder
             ) -> ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder {
                 builder
-                    #table_name_token_stream
+                    .table_name(#table_name)
                     #keys_token_stream
             }
 
@@ -64,8 +64,12 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
             #vis fn put_item(&self, mut builder: ::aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder)
             -> aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder {
                 builder
-                    #table_name_token_stream
+                    .table_name(#table_name)
                     #put_item_token_stream
+            }
+
+            #vis fn get_table_name() -> &'static ::std::primitive::str {
+                #table_name
             }
         }
     });
@@ -73,7 +77,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     Ok(out)
 }
 
-fn expand_table_name(id: &Ident, attrs: &[Attribute]) -> Result<TokenStream> {
+fn get_table_name(id: &Ident, attrs: &[Attribute]) -> Result<LitStr> {
     let mut table_name = LitStr::new(&to_pascal_case(&id.to_string()), id.span());
 
     for attr in attrs {
@@ -86,7 +90,7 @@ fn expand_table_name(id: &Ident, attrs: &[Attribute]) -> Result<TokenStream> {
             })?;
         }
     }
-    Ok(quote! { .table_name(#table_name) })
+    Ok(table_name)
 }
 
 fn expand_keys(attrs: &Attrs) -> TokenStream {
