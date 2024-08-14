@@ -1,8 +1,9 @@
 use crate::util::to_pascal_case;
 
-use proc_macro2::{Ident, Literal, TokenStream};
+use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::quote;
 use std::fmt::{Display, Formatter};
+use syn::Error;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum KeySchemaType {
@@ -35,6 +36,34 @@ pub fn expand_key_schema(id: &Ident, key_type: KeySchemaType) -> TokenStream {
             .build()
             .unwrap()
     }
+}
+
+pub fn validate_and_sort_key_schemas(
+    key_schemas: &mut [(&Ident, &KeySchemaType)],
+    span: Span,
+) -> syn::Result<()> {
+    match key_schemas
+        .iter_mut()
+        .filter(|(_, ks)| ks.eq(&&KeySchemaType::HashKey))
+        .count()
+    {
+        0 => Err(Error::new(span, "HashKey not found")),
+        2.. => Err(Error::new(span, "only one HashKey is allowed")),
+        1 => Ok(()),
+    }?;
+
+    if key_schemas
+        .iter()
+        .filter(|(_, ks)| ks.eq(&&KeySchemaType::RangeKey))
+        .count()
+        > 1
+    {
+        return Err(Error::new(span, "at most one RangeKey is allowed"));
+    };
+
+    key_schemas.sort_by_key(|(_, k)| *k);
+
+    Ok(())
 }
 
 #[cfg(test)]

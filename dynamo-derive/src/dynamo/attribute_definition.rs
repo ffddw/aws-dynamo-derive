@@ -1,6 +1,4 @@
-use crate::dynamo::attribute_value::{
-    expand_attribute_value, AttributeTypesContainer, AttributeValueType,
-};
+use crate::dynamo::attribute_value::AttributeValueType;
 use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -16,17 +14,11 @@ pub enum ScalarAttributeType {
 }
 
 impl ScalarAttributeType {
-    pub fn validate_type(&self, ty: &Type) -> Result<()> {
-        let to_attribute_id = Ident::new("dummy_id", ty.span());
-        let from_attribute_id = quote! { __dummy_id };
-        let container = AttributeTypesContainer::new(&to_attribute_id, ty);
-        let (_, attr_value_ty) =
-            expand_attribute_value(&to_attribute_id, &from_attribute_id, ty, 0, container)?;
-
+    pub fn validate_type(&self, ty: &Type, attr_value_ty: AttributeValueType) -> Result<()> {
         let scalar_attr_type = match attr_value_ty {
-            AttributeValueType::Blob => Self::B,
-            AttributeValueType::String => Self::S,
-            AttributeValueType::Number => Self::N,
+            AttributeValueType::B => Self::B,
+            AttributeValueType::S => Self::S,
+            AttributeValueType::N => Self::N,
             _ => {
                 return Err(Error::new(
                     ty.span(),
@@ -39,7 +31,7 @@ impl ScalarAttributeType {
             return Err(Error::new(
                 ty.span(),
                 format!(
-                    "cannot use {:?} for ScalarAttributeType {:?}",
+                    "cannot use detected type {:?} for ScalarAttributeType {:?}",
                     attr_value_ty, self
                 ),
             ));
@@ -60,7 +52,7 @@ pub fn expand_attribute_definition(id: &Ident, attr_type: &ScalarAttributeType) 
 
     quote! {
         aws_sdk_dynamodb::types::AttributeDefinition::builder()
-            .attribute_name(#ident.to_string())
+            .attribute_name(#ident)
             .attribute_type(#scalar_attr_type)
             .build()
             .unwrap()
