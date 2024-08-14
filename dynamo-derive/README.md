@@ -1,8 +1,8 @@
 # dynamo-derive
 
-helper crate for [aws-sdk-dynamodb](https://docs.rs/aws-sdk-dynamodb/latest/aws_sdk_dynamodb/)
+Helper crate for [aws-sdk-dynamodb](https://docs.rs/aws-sdk-dynamodb/latest/aws_sdk_dynamodb/).
 
-Generates conversion codes from rust primitive types to aws dynamo types.
+Generates conversion codes from Rust primitive types to AWS DynamoDB types.
 
 ## Examples
 
@@ -44,7 +44,7 @@ async fn main() {
         .build()
         .unwrap();
 
-    // do some extra works with create_table_builder
+    // Do some extra work with create_table_builder
     let create_table_builder = FooTable::create_table(client.create_table())
         .global_secondary_indexes(gsi_builder)
         .provisioned_throughput(provisioned_throughput);
@@ -56,7 +56,7 @@ async fn main() {
         name: "foo",
     };
 
-    // do some extra works with put_item_builder
+    // Do some extra work with put_item_builder
     let put_item_builder = foo.put_item(client.put_item());
     let _ = put_item_builder.send().await;
 }
@@ -64,15 +64,14 @@ async fn main() {
 
 ### KeySchemas and AttributeDefinitions
 
-Struct fields decorated with `#[table(range_key("N"))]` adds `ScalarAttributeType::N` AttributionDefinitions
-as well as `KeyType::Range` KeySchema.
+Struct fields decorated with `#[table(range_key("N"))]` add `ScalarAttributeType::N` AttributeDefinitions as well as `KeyType::Range` KeySchema.
 
-Available KeySchema
+Available KeySchemas:
 
 - `range_key`
 - `hash_key`
 
-Available AttributeDefinition
+Available AttributeDefinitions:
 
 - `"B"`
 - `"N"`
@@ -84,27 +83,20 @@ Available AttributeDefinition
 - `bool` -> `BOOL`
 - `aws_sdk_dynamodb::primitives::Blob` -> `B`
 - `i8 | u8 | .. | u128` -> `N`
-- for T: String | &str, `Vec<T>`, `[T; 1]`, `&[T]` -> `SS`
-- for T: `i8 | u8 | .. | u128`, `Vec<T>`, `[T; 1]`, `&[T]` -> `NS`
+- For `T: String | &str`, `Vec<T>`, `[T; 1]`, `&[T]` -> `SS`
+- For `T: i8 | u8 | .. | u128`, `Vec<T>`, `[T; 1]`, `&[T]` -> `NS`
 - `Option<()>` -> `NULL`
-- if T is `Vec<T>` | `[T; 1]` | `&[T]` but not `SS` nor `NS` -> `L`
-- `HashMap<String, T>` -> `M`, automatically converts inner value of HashMap to AttributeValue types.
+- If `T` is `Vec<T>` | `[T; 1]` | `&[T]` but not `SS` nor `NS` -> `L`
+- `HashMap<String, T>` -> `M`, automatically converts inner values of `HashMap` to `AttributeValue` types.
 
 ### GlobalSecondaryIndex
 
-There are fairly lots of things to set for GSI compare to other fields, this API only gives you for KeySchemaElement.
-`get_global_secondary_index_key_schemas` returns BTreeMap of `{ index name: [KeySchemaElement] }` with the value given
-to attribute.
-By getting the Vec<KeySchemaElement> using the index_name as key of BTreeMap, you can pass the retrieved value
-to `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
+There are many things to set for GSI compared to other fields. This API only provides KeySchemaElement. `get_global_secondary_index_key_schemas` returns a `BTreeMap` of `{ index name: [KeySchemaElement] }` with the value given to the attribute. By getting the `Vec<KeySchemaElement>` using the `index_name` as the key of `BTreeMap`, you can pass the retrieved value to the `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
 
 ### AttributeValue conversions
 
-`from_attribute_value` converts `HashMap<String, AttributeValue>` to Rust types. If any of type of field is not matched
-to given AttributeValue type, returns `Err(AttributeValue)`.
+`from_attribute_value` converts `HashMap<String, AttributeValue>` to Rust types. If any field type does not match the given `AttributeValue` type, it returns `Err(AttributeValue)`.
 
 ### Downsides
 
-Macro tries to convert all possible types that leeds to extra allocation while iterating items of collection types like
-Vector or HashMap.
-If the type is super complex and heavy, you might need benchmark before using it. 
+The macro tries to convert all possible types, which leads to extra allocation while iterating items of collection types like `Vector` or `HashMap`. If the type is super complex and heavy, you might need to benchmark before using it.
