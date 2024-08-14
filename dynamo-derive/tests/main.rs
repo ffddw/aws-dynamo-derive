@@ -32,11 +32,11 @@ async fn test_create_table_and_put_item() {
     #[derive(Table)]
     #[table(table_name = "AwesomeFooTable")]
     struct FooTable {
-        #[table(hash_key("S"))]
-        primary: String,
         #[table(range_key("N"))]
         #[table(global_secondary_index(index_name = "idx", range_key("N")))]
         range_key: u32,
+        #[table(hash_key("S"))]
+        primary: String,
         #[table(global_secondary_index(index_name = "idx", hash_key("S")))]
         hash_key: String,
         #[table(global_secondary_index(index_name = "idx2", hash_key("S")))]
@@ -57,6 +57,7 @@ async fn test_create_table_and_put_item() {
         "AwesomeFooTable"
     );
     let key_schemas = builder.get_key_schema().as_ref().unwrap();
+    // tests HashKey always prior to RangeKey
     assert_eq!(
         key_schemas,
         &vec![
@@ -77,13 +78,13 @@ async fn test_create_table_and_put_item() {
         attribute_definitions,
         &vec![
             AttributeDefinition::builder()
-                .attribute_name("Primary")
-                .attribute_type(ScalarAttributeType::S)
+                .attribute_name("RangeKey")
+                .attribute_type(ScalarAttributeType::N)
                 .build()
                 .unwrap(),
             AttributeDefinition::builder()
-                .attribute_name("RangeKey")
-                .attribute_type(ScalarAttributeType::N)
+                .attribute_name("Primary")
+                .attribute_type(ScalarAttributeType::S)
                 .build()
                 .unwrap(),
             AttributeDefinition::builder()
