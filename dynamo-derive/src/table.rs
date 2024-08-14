@@ -269,7 +269,7 @@ fn expand_prelude_structs(struct_name: &Ident, containers: &[Container]) -> Vec<
         .map(|c| {
             let ident = c.field_ident;
             let ty = c.ty;
-            quote! { #ident: #ty }
+            quote! { pub #ident: #ty }
         })
         .collect::<Vec<_>>();
 
