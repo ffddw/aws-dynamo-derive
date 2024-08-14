@@ -250,3 +250,38 @@ async fn attribute_value_to_rust_types_checks() {
     let res = FooTable::from_attribute_value(&items);
     assert!(res.is_err());
 }
+
+#[tokio::test]
+async fn test_get_primary_keys() {
+    #[derive(Debug, Table, Eq, PartialEq)]
+    struct FooTable {
+        #[table(range_key("N"))]
+        range_key: u32,
+        #[table(hash_key("S"))]
+        hash_key: String,
+    }
+
+    let _foo_table = FooTable {
+        hash_key: "hk".to_string(),
+        range_key: 1,
+    };
+
+    let config = aws_config::load_from_env().await;
+    let client = Client::new(&config);
+    let primary_key = FooTable::get_primary_keys(FooTablePrimaryKey {
+        range_key: 1,
+        hash_key: "hk".to_string(),
+    });
+
+    let mut expected_map = HashMap::new();
+    expected_map.insert("RangeKey".to_string(), AttributeValue::N(1.to_string()));
+    expected_map.insert("HashKey".to_string(), AttributeValue::S("hk".to_string()));
+
+    assert_eq!(primary_key, expected_map);
+
+    // compiles well
+    let _ = client
+        .get_item()
+        .table_name(FooTable::get_table_name())
+        .set_key(Some(primary_key));
+}

@@ -1,43 +1,28 @@
+use crate::table::Container;
 use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, TokenStream};
-use quote::{format_ident, quote, ToTokens};
+use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use syn::spanned::Spanned;
 use syn::{Error, GenericArgument, PathArguments, Result, Type, TypePath};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum AttributeValueType {
-    Blob,
-    BlobList,
+    B,
+    Bs,
     Bool,
-    List,
-    Map,
-    Number,
-    NumberList,
+    L,
+    M,
+    N,
+    Ns,
     Null,
-    String,
-    StringList,
+    S,
+    Ss,
 }
 
-pub struct AttributeTypesContainer<'a> {
-    /// field of struct
-    pub field_ident: &'a Ident,
-    /// type of field
-    pub ty: &'a Type,
-    /// from Rust type to AttributeValueType
-    pub to_attribute_token_stream: TokenStream,
-    /// from AttributeValueType to Rust type
-    pub from_attribute_token_stream: TokenStream,
-}
-
-impl<'a> AttributeTypesContainer<'a> {
-    pub fn new(ident: &'a Ident, ty: &'a Type) -> Self {
-        Self {
-            field_ident: ident,
-            ty,
-            to_attribute_token_stream: TokenStream::new(),
-            from_attribute_token_stream: TokenStream::new(),
-        }
+impl ToTokens for AttributeValueType {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.append(format_ident!("{}", format!("{:?}", self)));
     }
 }
 
@@ -49,8 +34,8 @@ struct IterVariants {
 
 fn get_iter_variants(
     field_id: &Ident,
-    to_attribute_id: &Ident,
-    from_attribute_id: &TokenStream,
+    to_attribute_ident: &Ident,
+    from_attribute_ident: &TokenStream,
     depth: usize,
 ) -> IterVariants {
     let mut to_attribute_collection =
@@ -59,9 +44,9 @@ fn get_iter_variants(
     let field_id_as_key = Literal::string(&to_pascal_case(&field_id.to_string()));
 
     if depth == 0 {
-        to_attribute_collection = quote! { self.#to_attribute_id };
+        to_attribute_collection = quote! { self.#to_attribute_ident };
         from_attribute_collection = quote! {
-            #from_attribute_id.get(#field_id_as_key).ok_or(::aws_sdk_dynamodb::types::AttributeValue::Null(true))?
+            #from_attribute_ident.get(#field_id_as_key).ok_or(::aws_sdk_dynamodb::types::AttributeValue::Null(true))?
         };
     };
 
@@ -75,33 +60,40 @@ fn get_iter_variants(
 }
 
 pub fn expand_attribute_value<'a>(
-    to_attribute_id: &'a Ident,
-    from_attribute_id: &'a TokenStream,
+    to_attribute_ident: &'a Ident,
+    from_attribute_ident: &'a TokenStream,
     ty: &'a Type,
     depth: usize,
-    container: AttributeTypesContainer<'a>,
-) -> Result<(AttributeTypesContainer<'a>, AttributeValueType)> {
+    container: Container<'a>,
+) -> Result<(Container<'a>, AttributeValueType)> {
     let (mut container, nested_type) = match ty {
-        Type::Path(path) => expand_path(to_attribute_id, from_attribute_id, path, depth, container),
+        Type::Path(path) => expand_path(
+            to_attribute_ident,
+            from_attribute_ident,
+            path,
+            depth,
+            container,
+        ),
         _ => Err(Error::new(ty.span(), "unsupported type")),
     }?;
 
     container.ty = ty;
+    container.attr_value_types.push(nested_type);
 
     Ok((container, nested_type))
 }
 
 fn expand_path<'a>(
-    to_attribute_id: &'a Ident,
-    from_attribute_id: &'a TokenStream,
+    to_attribute_ident: &'a Ident,
+    from_attribute_ident: &'a TokenStream,
     path: &'a TypePath,
     depth: usize,
-    mut container: AttributeTypesContainer<'a>,
-) -> Result<(AttributeTypesContainer<'a>, AttributeValueType)> {
+    mut container: Container<'a>,
+) -> Result<(Container<'a>, AttributeValueType)> {
     let iter_variants = get_iter_variants(
         container.field_ident,
-        to_attribute_id,
-        from_attribute_id,
+        to_attribute_ident,
+        from_attribute_ident,
         depth,
     );
     let IterVariants {
@@ -134,8 +126,8 @@ fn expand_path<'a>(
             {
                 GenericArgument::Type(ty) => {
                     let (container, nested_type) = expand_attribute_value(
-                        to_attribute_id,
-                        from_attribute_id,
+                        to_attribute_ident,
+                        from_attribute_ident,
                         ty,
                         depth + 1,
                         container,
@@ -194,8 +186,8 @@ fn expand_path<'a>(
             match value_ty {
                 GenericArgument::Type(ty) => {
                     let (mut container, _) = expand_attribute_value(
-                        to_attribute_id,
-                        from_attribute_id,
+                        to_attribute_ident,
+                        from_attribute_ident,
                         ty,
                         depth + 1,
                         container,
@@ -228,7 +220,7 @@ fn expand_path<'a>(
                             Ok(__private_tobe_map)
                         }?
                     };
-                    (container, AttributeValueType::Map)
+                    (container, AttributeValueType::M)
                 }
                 _ => return Err(Error::new(key_ty.span(), "value type not found")),
             }
@@ -245,7 +237,7 @@ fn expand_path<'a>(
                             .parse()
                             .map_err(|_| ::aws_sdk_dynamodb::types::AttributeValue::Null(true))?
                     };
-                    AttributeValueType::Number
+                    AttributeValueType::N
                 }
                 "String" => {
                     container.to_attribute_token_stream = quote! {
@@ -254,7 +246,7 @@ fn expand_path<'a>(
                     container.from_attribute_token_stream = quote! {
                         #from_attribute_collection.as_s().map_err(|e| e.clone())?.to_string()
                     };
-                    AttributeValueType::String
+                    AttributeValueType::S
                 }
                 "Blob" => {
                     container.to_attribute_token_stream = quote! {
@@ -263,7 +255,7 @@ fn expand_path<'a>(
                     container.from_attribute_token_stream = quote! {
                         #from_attribute_collection.as_b().map_err(|e| e.clone())?.clone()
                     };
-                    AttributeValueType::Blob
+                    AttributeValueType::B
                 }
                 "bool" => {
                     container.to_attribute_token_stream = quote! {
@@ -295,10 +287,10 @@ fn expand_path<'a>(
 }
 
 fn expand_plural_nested<'a>(
-    mut container: AttributeTypesContainer<'a>,
+    mut container: Container<'a>,
     nested_type: AttributeValueType,
     iter_variants: &IterVariants,
-) -> Result<(AttributeTypesContainer<'a>, AttributeValueType)> {
+) -> Result<(Container<'a>, AttributeValueType)> {
     let IterVariants {
         to_attribute_collection,
         from_attribute_collection,
@@ -306,7 +298,7 @@ fn expand_plural_nested<'a>(
     } = iter_variants;
 
     let attribute_value_type = match nested_type {
-        AttributeValueType::Blob => {
+        AttributeValueType::B => {
             container.to_attribute_token_stream = quote! {
                 ::aws_sdk_dynamodb::types::AttributeValue::Bs(
                     #to_attribute_collection
@@ -323,10 +315,10 @@ fn expand_plural_nested<'a>(
                     .map(|#iterator| Ok(#iterator.clone()))
                     .collect::<Result<Vec<_>, _>>()?
             };
-            AttributeValueType::BlobList
+            AttributeValueType::Bs
         }
 
-        AttributeValueType::String => {
+        AttributeValueType::S => {
             container.to_attribute_token_stream = quote! {
                 ::aws_sdk_dynamodb::types::AttributeValue::Ss(
                     #to_attribute_collection
@@ -343,9 +335,9 @@ fn expand_plural_nested<'a>(
                     .map(|#iterator| Ok(#iterator.to_string()))
                     .collect::<Result<Vec<_>, _>>()?
             };
-            AttributeValueType::StringList
+            AttributeValueType::Ss
         }
-        AttributeValueType::Number => {
+        AttributeValueType::N => {
             container.to_attribute_token_stream = quote! {
                 ::aws_sdk_dynamodb::types::AttributeValue::Ns(
                     #to_attribute_collection
@@ -362,15 +354,15 @@ fn expand_plural_nested<'a>(
                     .map(|#iterator| #iterator.parse().map_err(|_| ::aws_sdk_dynamodb::types::AttributeValue::Null(true)))
                     .collect::<Result<Vec<_>, _>>()?
             };
-            AttributeValueType::NumberList
+            AttributeValueType::Ns
         }
-        AttributeValueType::BlobList
-        | AttributeValueType::List
-        | AttributeValueType::Map
+        AttributeValueType::Bs
+        | AttributeValueType::L
+        | AttributeValueType::M
         | AttributeValueType::Null
         | AttributeValueType::Bool
-        | AttributeValueType::NumberList
-        | AttributeValueType::StringList => {
+        | AttributeValueType::Ns
+        | AttributeValueType::Ss => {
             let nested_to_attribute_token_stream = container.to_attribute_token_stream;
             let nested_from_attribute_token_stream = container.from_attribute_token_stream;
             container.to_attribute_token_stream = quote! {
@@ -389,7 +381,7 @@ fn expand_plural_nested<'a>(
                     .map(|#iterator| Ok(#nested_from_attribute_token_stream))
                     .collect::<Result<Vec<_>, _>>()?
             };
-            AttributeValueType::List
+            AttributeValueType::L
         }
     };
 
@@ -398,9 +390,7 @@ fn expand_plural_nested<'a>(
 
 #[cfg(test)]
 mod test_attribute_value {
-    use crate::dynamo::attribute_value::{
-        expand_attribute_value, AttributeTypesContainer, AttributeValueType,
-    };
+    use crate::dynamo::attribute_value::{expand_attribute_value, AttributeValueType, Container};
 
     use proc_macro2::{Ident, TokenStream};
     use quote::quote;
@@ -408,19 +398,19 @@ mod test_attribute_value {
     use test_context::{test_context, TestContext};
 
     struct AttrValueCtx {
-        to_attribute_id: Ident,
-        from_attribute_id: TokenStream,
+        to_attribute_ident: Ident,
+        from_attribute_ident: TokenStream,
         ty: Type,
     }
     impl TestContext for AttrValueCtx {
         fn setup() -> Self {
-            let to_attribute_id = parse_quote! { foo };
-            let from_attribute_id = quote! { __private_from_attribute_value };
+            let to_attribute_ident = parse_quote! { foo };
+            let from_attribute_ident = quote! { __private_from_attribute_value };
             let ty = parse_quote! { i32 };
 
             Self {
-                to_attribute_id,
-                from_attribute_id,
+                to_attribute_ident,
+                from_attribute_ident,
                 ty,
             }
         }
@@ -434,10 +424,10 @@ mod test_attribute_value {
             ::aws_sdk_dynamodb::types::AttributeValue::S(self.foo.to_string())
         };
 
-        let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
         let (container, root_ty) = expand_attribute_value(
-            &ctx.to_attribute_id,
-            &ctx.from_attribute_id,
+            &ctx.to_attribute_ident,
+            &ctx.from_attribute_ident,
             &string_type,
             0,
             container,
@@ -446,7 +436,7 @@ mod test_attribute_value {
             container.to_attribute_token_stream.to_string(),
             expected.to_string()
         );
-        assert_eq!(root_ty, AttributeValueType::String);
+        assert_eq!(root_ty, AttributeValueType::S);
 
         let number_types = [
             parse_quote! { i8 },
@@ -464,10 +454,10 @@ mod test_attribute_value {
         };
 
         number_types.iter().try_for_each(|t| {
-            let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+            let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
             let (ts, root_ty) = expand_attribute_value(
-                &ctx.to_attribute_id,
-                &ctx.from_attribute_id,
+                &ctx.to_attribute_ident,
+                &ctx.from_attribute_ident,
                 t,
                 0,
                 container,
@@ -476,15 +466,15 @@ mod test_attribute_value {
                 ts.to_attribute_token_stream.to_string(),
                 expected.to_string()
             );
-            assert_eq!(root_ty, AttributeValueType::Number);
+            assert_eq!(root_ty, AttributeValueType::N);
             Result::Ok(())
         })?;
 
-        let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
         let blob_type = parse_quote! { Blob };
         let (ts, root_ty) = expand_attribute_value(
-            &ctx.to_attribute_id,
-            &ctx.from_attribute_id,
+            &ctx.to_attribute_ident,
+            &ctx.from_attribute_ident,
             &blob_type,
             0,
             container,
@@ -496,16 +486,16 @@ mod test_attribute_value {
             ts.to_attribute_token_stream.to_string(),
             expected.to_string()
         );
-        assert_eq!(root_ty, AttributeValueType::Blob);
+        assert_eq!(root_ty, AttributeValueType::B);
 
         let bool_type = parse_quote! { bool };
         let expected = quote! {
             ::aws_sdk_dynamodb::types::AttributeValue::Bool(self.foo.clone())
         };
-        let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
         let (ts, root_ty) = expand_attribute_value(
-            &ctx.to_attribute_id,
-            &ctx.from_attribute_id,
+            &ctx.to_attribute_ident,
+            &ctx.from_attribute_ident,
             &bool_type,
             0,
             container,
@@ -520,10 +510,10 @@ mod test_attribute_value {
         let expected = quote! {
             ::aws_sdk_dynamodb::types::AttributeValue::Null(self.foo.is_none())
         };
-        let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
         let (ts, root_ty) = expand_attribute_value(
-            &ctx.to_attribute_id,
-            &ctx.from_attribute_id,
+            &ctx.to_attribute_ident,
+            &ctx.from_attribute_ident,
             &null_type,
             0,
             container,
@@ -550,10 +540,10 @@ mod test_attribute_value {
             )
         };
 
-        let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
         let (ts, root_ty) = expand_attribute_value(
-            &ctx.to_attribute_id,
-            &ctx.from_attribute_id,
+            &ctx.to_attribute_ident,
+            &ctx.from_attribute_ident,
             &string_list_type,
             0,
             container,
@@ -562,7 +552,7 @@ mod test_attribute_value {
             ts.to_attribute_token_stream.to_string(),
             expected.to_string(),
         );
-        assert_eq!(root_ty, AttributeValueType::StringList);
+        assert_eq!(root_ty, AttributeValueType::Ss);
 
         let number_list_types = [
             parse_quote! { Vec<i8> },
@@ -582,10 +572,10 @@ mod test_attribute_value {
         };
 
         number_list_types.iter().try_for_each(|t| {
-            let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+            let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
             let (ts, root_ty) = expand_attribute_value(
-                &ctx.to_attribute_id,
-                &ctx.from_attribute_id,
+                &ctx.to_attribute_ident,
+                &ctx.from_attribute_ident,
                 t,
                 0,
                 container,
@@ -594,7 +584,7 @@ mod test_attribute_value {
                 ts.to_attribute_token_stream.to_string(),
                 expected.to_string()
             );
-            assert_eq!(root_ty, AttributeValueType::NumberList);
+            assert_eq!(root_ty, AttributeValueType::Ns);
             Result::Ok(())
         })?;
 
@@ -608,10 +598,10 @@ mod test_attribute_value {
             )
         };
 
-        let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
         let (ts, root_ty) = expand_attribute_value(
-            &ctx.to_attribute_id,
-            &ctx.from_attribute_id,
+            &ctx.to_attribute_ident,
+            &ctx.from_attribute_ident,
             &blob_list_type,
             0,
             container,
@@ -620,7 +610,7 @@ mod test_attribute_value {
             ts.to_attribute_token_stream.to_string(),
             expected.to_string()
         );
-        assert_eq!(root_ty, AttributeValueType::BlobList);
+        assert_eq!(root_ty, AttributeValueType::Bs);
 
         let nested_number_list_types = [
             parse_quote! { Vec<Vec<u8>> },
@@ -644,19 +634,19 @@ mod test_attribute_value {
         };
 
         nested_number_list_types.iter().try_for_each(|t| {
-            let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
-            let (ts, root_ty) = expand_attribute_value(
-                &ctx.to_attribute_id,
-                &ctx.from_attribute_id,
+            let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+            let (expanded_container, root_ty) = expand_attribute_value(
+                &ctx.to_attribute_ident,
+                &ctx.from_attribute_ident,
                 t,
                 0,
                 container,
             )?;
             assert_eq!(
-                ts.to_attribute_token_stream.to_string(),
+                expanded_container.to_attribute_token_stream.to_string(),
                 expected.to_string()
             );
-            assert_eq!(root_ty, AttributeValueType::List);
+            assert_eq!(root_ty, AttributeValueType::L);
             Result::Ok(())
         })?;
 
@@ -667,10 +657,10 @@ mod test_attribute_value {
     #[test]
     fn test_map_not_string_key_fail(ctx: &mut AttrValueCtx) {
         let map = parse_quote! { HashMap<i32, String> };
-        let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
         let err = expand_attribute_value(
-            &ctx.to_attribute_id,
-            &ctx.from_attribute_id,
+            &ctx.to_attribute_ident,
+            &ctx.from_attribute_ident,
             &map,
             0,
             container,
@@ -704,10 +694,10 @@ mod test_attribute_value {
         };
 
         number_map_types.iter().try_for_each(|t| {
-            let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+            let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
             let (ts, root_ty) = expand_attribute_value(
-                &ctx.to_attribute_id,
-                &ctx.from_attribute_id,
+                &ctx.to_attribute_ident,
+                &ctx.from_attribute_ident,
                 t,
                 0,
                 container,
@@ -716,7 +706,7 @@ mod test_attribute_value {
                 ts.to_attribute_token_stream.to_string(),
                 expected.to_string()
             );
-            assert_eq!(root_ty, AttributeValueType::Map);
+            assert_eq!(root_ty, AttributeValueType::M);
             Result::Ok(())
         })?;
 
@@ -752,10 +742,10 @@ mod test_attribute_value {
                 ::aws_sdk_dynamodb::types::AttributeValue::M(__private_tobe_map)
             }
         };
-        let container = AttributeTypesContainer::new(&ctx.to_attribute_id, &ctx.ty);
+        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
         let (ts, root_ty) = expand_attribute_value(
-            &ctx.to_attribute_id,
-            &ctx.from_attribute_id,
+            &ctx.to_attribute_ident,
+            &ctx.from_attribute_ident,
             &nested_map_type,
             0,
             container,
@@ -764,7 +754,7 @@ mod test_attribute_value {
             ts.to_attribute_token_stream.to_string(),
             expected.to_string()
         );
-        assert_eq!(root_ty, AttributeValueType::Map);
+        assert_eq!(root_ty, AttributeValueType::M);
 
         Ok(())
     }

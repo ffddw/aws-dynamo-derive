@@ -262,11 +262,65 @@ fn expand_put_item_fn(
     }
 }
 
-    out_token_stream.extend(quote! {
-        Ok(Self {
-            #fields_token_stream
+fn expand_prelude_structs(struct_name: &Ident, containers: &[Container]) -> Vec<TokenStream> {
+    let primary_key_fields = containers
+        .iter()
+        .filter(|c| !c.key_schemas.is_empty())
+        .map(|c| {
+            let ident = c.field_ident;
+            let ty = c.ty;
+            quote! { #ident: #ty }
         })
-    });
+        .collect::<Vec<_>>();
 
-    out_token_stream
+    let primary_key_input_struct_name =
+        format_ident!("{struct_name}{PRIMARY_KEY_INPUT_STRUCT_POSTFIX}",);
+    let primary_key_input_struct = quote! {
+        struct #primary_key_input_struct_name {
+            #( #primary_key_fields, )*
+        }
+    };
+
+    vec![primary_key_input_struct]
+}
+
+fn expand_get_primary_keys_fn(
+    struct_name: &Ident,
+    containers: &[Container],
+) -> Result<TokenStream> {
+    let primary_key_fields = containers
+        .iter()
+        .filter(|c| !c.key_schemas.is_empty())
+        .map(|c| {
+            let (_, ty) = expand_attribute_value(
+                c.field_ident,
+                &c.from_attribute_token_stream,
+                c.ty,
+                0,
+                c.clone(),
+            )?;
+            let ident = c.field_ident;
+            let ident_to_key = to_pascal_case(&ident.to_string());
+            Ok(quote! {
+                primary_keys.insert(
+                    #ident_to_key.to_string(),
+                    ::aws_sdk_dynamodb::types::AttributeValue::#ty(input.#ident.to_string())
+                );
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let primary_key_input_struct_name =
+        format_ident!("{struct_name}{PRIMARY_KEY_INPUT_STRUCT_POSTFIX}");
+
+    Ok(quote! {
+        fn get_primary_keys(input: #primary_key_input_struct_name)
+        -> ::std::collections::HashMap<
+            ::std::string::String, ::aws_sdk_dynamodb::types::AttributeValue>
+        {
+            let mut primary_keys = ::std::collections::HashMap::new();
+            #( #primary_key_fields )*
+            primary_keys
+        }
+    })
 }
