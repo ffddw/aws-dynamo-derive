@@ -44,7 +44,7 @@ async fn main() {
         .build()
         .unwrap();
 
-    // Do some extra work with create_table_builder
+    // do some extra work with create_table_builder
     let create_table_builder = FooTable::create_table(client.create_table())
         .global_secondary_indexes(gsi_builder)
         .provisioned_throughput(provisioned_throughput);
@@ -56,9 +56,23 @@ async fn main() {
         name: "foo".to_string(),
     };
 
-    // Do some extra work with put_item_builder
+    // do some extra work with put_item_builder
     let put_item_builder = foo.put_item(client.put_item());
     let _ = put_item_builder.send().await;
+
+    // macro expands input struct for primary key
+    let primary_key = FooTable::get_primary_keys(FooTablePrimaryKey {
+        index: 1,
+        name: "foo".to_string()
+    });
+    
+    // query with primary keys
+    let _ = client
+        .get_item()
+        .table_name(FooTable::get_table_name())
+        .set_key(Some(primary_key))
+        .send()
+        .await;
 }
 ```
 
@@ -92,8 +106,8 @@ Available AttributeDefinitions:
 ### GlobalSecondaryIndex
 
 There are many things to set for GSI compared to other fields. This API only provides KeySchemaElement. 
-`get_global_secondary_index_key_schemas` returns a `BTreeMap` of `{ index name: [KeySchemaElement] }` with the value given to the attribute. 
-By getting the `Vec<KeySchemaElement>` using the `index_name` as the key of `BTreeMap`, you can pass the retrieved value to the `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
+`get_global_secondary_index_key_schemas` returns a `HashMap` of `{ index name: [KeySchemaElement] }` with the value given to the attribute. 
+By getting the `Vec<KeySchemaElement>` using the `index_name` as the key of `HashMap`, you can pass the retrieved value to the `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
 
 ### AttributeValue conversions
 
