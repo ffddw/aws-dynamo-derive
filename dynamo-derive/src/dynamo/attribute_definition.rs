@@ -1,10 +1,9 @@
 use crate::dynamo::attribute_value::AttributeValueType;
 use crate::util::to_pascal_case;
 
-use proc_macro2::{Ident, Literal, TokenStream};
+use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::quote;
-use syn::spanned::Spanned;
-use syn::{Error, Result, Type};
+use syn::{Error, Result};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ScalarAttributeType {
@@ -14,30 +13,22 @@ pub enum ScalarAttributeType {
 }
 
 impl ScalarAttributeType {
-    pub fn validate_type(&self, ty: &Type, attr_value_ty: AttributeValueType) -> Result<()> {
+    pub fn from_attribute_value_type(
+        attr_value_ty: AttributeValueType,
+        span: Span,
+    ) -> Result<Self> {
         let scalar_attr_type = match attr_value_ty {
             AttributeValueType::B => Self::B,
             AttributeValueType::S => Self::S,
             AttributeValueType::N => Self::N,
             _ => {
                 return Err(Error::new(
-                    ty.span(),
+                    span,
                     format!("invalid type for ScalarAttributeType: {:?}", attr_value_ty),
                 ))
             }
         };
-
-        if self.ne(&scalar_attr_type) {
-            return Err(Error::new(
-                ty.span(),
-                format!(
-                    "cannot use detected type {:?} for ScalarAttributeType {:?}",
-                    attr_value_ty, self
-                ),
-            ));
-        };
-
-        Ok(())
+        Ok(scalar_attr_type)
     }
 }
 

@@ -8,7 +8,7 @@ use proc_macro2::Literal;
 use std::collections::BTreeMap;
 use syn::meta::ParseNestedMeta;
 use syn::spanned::Spanned;
-use syn::{parenthesized, Attribute, Error, Field, LitStr, Result};
+use syn::{Attribute, Field, Result};
 
 const GLOBAL_SECONDARY_INDEX_ENTRY: &str = "global_secondary_index";
 const GLOBAL_SECONDARY_INDEX_NAME: &str = "index_name";
@@ -55,31 +55,10 @@ fn parse_key_schemas(
 ) -> Result<()> {
     for key_type in [KeySchemaType::HashKey, KeySchemaType::RangeKey] {
         if table.path.is_ident(&key_type.to_string()) {
-            let content;
-            parenthesized!(content in table.input);
-            let scalar_attribute_type: Option<LitStr> = content.parse().ok();
-
-            let scalar_attribute_type = match strip_quote_mark(
-                &scalar_attribute_type
-                    .clone()
-                    .ok_or(Error::new(field.span(), "invalid key type format"))?
-                    .token()
-                    .to_string(),
-            )
-            .unwrap()
-            {
-                "B" => ScalarAttributeType::B,
-                "N" => ScalarAttributeType::N,
-                "S" => ScalarAttributeType::S,
-                _ => {
-                    return Err(Error::new(
-                        scalar_attribute_type.span(),
-                        "invalid ScalarAttributeType",
-                    ))
-                }
-            };
-
-            scalar_attribute_type.validate_type(&field.ty, attribute_value_type)?;
+            let scalar_attribute_type = ScalarAttributeType::from_attribute_value_type(
+                attribute_value_type,
+                field.ty.span(),
+            )?;
 
             key_schemas.push(key_type);
             if !attribute_definitions.contains(&scalar_attribute_type) {

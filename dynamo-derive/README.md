@@ -14,10 +14,10 @@ async fn main() {
     #[derive(Table)]
     #[table(table_name = "AwesomeFooTable")]
     struct FooTable {
-        #[table(range_key("N"))]
+        #[table(range_key)]
         index: u64,
-        #[table(hash_key("S"))]
-        #[table(global_secondary_index(index_name = "foo_index_1", hash_key("S")))]
+        #[table(hash_key)]
+        #[table(global_secondary_index(index_name = "foo_index_1", hash_key))]
         name: String,
         temp: i128,
         values: Values,
@@ -109,18 +109,18 @@ async fn get_item_by_primary_key() {
 
 ### KeySchemas and AttributeDefinitions
 
-Struct fields decorated with `#[table(range_key("N"))]` add `ScalarAttributeType::N` AttributeDefinitions as well as `KeyType::Range` KeySchema.
+Struct fields decorated with `#[table(range_key)]` add `KeyType::Range` KeySchema, and by field type, macro maps 
+AttributeDefinitions.
 
 Available KeySchemas:
 
 - `range_key`
 - `hash_key`
 
-Available AttributeDefinitions:
-
-- `"B"`
-- `"N"`
-- `"S"`
+AttributeDefinition mappings:
+- `String` -> `S`
+- `i8 | u8 | .. | u128` -> `N`
+- `Blob` -> `B`
 
 ### AttributeValue
 
