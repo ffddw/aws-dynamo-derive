@@ -1,4 +1,4 @@
-use crate::table::Container;
+use crate::container::Container;
 use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -35,6 +35,7 @@ struct IterVariants {
 fn get_iter_variants(
     field_id: &Ident,
     to_attribute_ident: &Ident,
+    to_attribute_target_ident: &TokenStream,
     from_attribute_ident: &TokenStream,
     depth: usize,
 ) -> IterVariants {
@@ -44,7 +45,7 @@ fn get_iter_variants(
     let field_id_as_key = Literal::string(&to_pascal_case(&field_id.to_string()));
 
     if depth == 0 {
-        to_attribute_collection = quote! { self.#to_attribute_ident };
+        to_attribute_collection = quote! { #to_attribute_target_ident.#to_attribute_ident };
         from_attribute_collection = quote! {
             #from_attribute_ident.get(#field_id_as_key).ok_or(::aws_sdk_dynamodb::types::AttributeValue::Null(true))?
         };
@@ -78,7 +79,6 @@ pub fn expand_attribute_value<'a>(
     }?;
 
     container.ty = ty;
-    container.attr_value_types.push(nested_type);
 
     Ok((container, nested_type))
 }
@@ -93,6 +93,7 @@ fn expand_path<'a>(
     let iter_variants = get_iter_variants(
         container.field_ident,
         to_attribute_ident,
+        container.to_attribute_target_ident,
         from_attribute_ident,
         depth,
     );
@@ -279,7 +280,18 @@ fn expand_path<'a>(
                     };
                     AttributeValueType::Null
                 }
-                _ => return Err(Error::new(path_segment.ident.span(), "unsupported type")),
+                _ => {
+                    container.to_attribute_token_stream = quote! {
+                        ::aws_sdk_dynamodb::types::AttributeValue::M(( &#to_attribute_collection.clone() ).into())
+                    };
+                    container.from_attribute_token_stream = quote! {
+                        #from_attribute_collection
+                            .as_m()
+                            .map_err(|e| e.clone())?.try_into()
+                            .map_err(|_| ::aws_sdk_dynamodb::types::AttributeValue::Null(true))?
+                    };
+                    AttributeValueType::M
+                }
             };
             (container, nested_type)
         }
@@ -399,17 +411,20 @@ mod test_attribute_value {
 
     struct AttrValueCtx {
         to_attribute_ident: Ident,
+        to_attribute_target_ident: TokenStream,
         from_attribute_ident: TokenStream,
         ty: Type,
     }
     impl TestContext for AttrValueCtx {
         fn setup() -> Self {
             let to_attribute_ident = parse_quote! { foo };
+            let to_attribute_target_ident = parse_quote! { self };
             let from_attribute_ident = quote! { __private_from_attribute_value };
             let ty = parse_quote! { i32 };
 
             Self {
                 to_attribute_ident,
+                to_attribute_target_ident,
                 from_attribute_ident,
                 ty,
             }
@@ -424,7 +439,11 @@ mod test_attribute_value {
             ::aws_sdk_dynamodb::types::AttributeValue::S(self.foo.to_string())
         };
 
-        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+        let container = Container::new(
+            &ctx.to_attribute_ident,
+            &ctx.ty,
+            &ctx.to_attribute_target_ident,
+        );
         let (container, root_ty) = expand_attribute_value(
             &ctx.to_attribute_ident,
             &ctx.from_attribute_ident,
@@ -454,7 +473,11 @@ mod test_attribute_value {
         };
 
         number_types.iter().try_for_each(|t| {
-            let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+            let container = Container::new(
+                &ctx.to_attribute_ident,
+                &ctx.ty,
+                &ctx.to_attribute_target_ident,
+            );
             let (ts, root_ty) = expand_attribute_value(
                 &ctx.to_attribute_ident,
                 &ctx.from_attribute_ident,
@@ -470,7 +493,11 @@ mod test_attribute_value {
             Result::Ok(())
         })?;
 
-        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+        let container = Container::new(
+            &ctx.to_attribute_ident,
+            &ctx.ty,
+            &ctx.to_attribute_target_ident,
+        );
         let blob_type = parse_quote! { Blob };
         let (ts, root_ty) = expand_attribute_value(
             &ctx.to_attribute_ident,
@@ -492,7 +519,11 @@ mod test_attribute_value {
         let expected = quote! {
             ::aws_sdk_dynamodb::types::AttributeValue::Bool(self.foo.clone())
         };
-        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+        let container = Container::new(
+            &ctx.to_attribute_ident,
+            &ctx.ty,
+            &ctx.to_attribute_target_ident,
+        );
         let (ts, root_ty) = expand_attribute_value(
             &ctx.to_attribute_ident,
             &ctx.from_attribute_ident,
@@ -510,7 +541,11 @@ mod test_attribute_value {
         let expected = quote! {
             ::aws_sdk_dynamodb::types::AttributeValue::Null(self.foo.is_none())
         };
-        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+        let container = Container::new(
+            &ctx.to_attribute_ident,
+            &ctx.ty,
+            &ctx.to_attribute_target_ident,
+        );
         let (ts, root_ty) = expand_attribute_value(
             &ctx.to_attribute_ident,
             &ctx.from_attribute_ident,
@@ -540,7 +575,11 @@ mod test_attribute_value {
             )
         };
 
-        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+        let container = Container::new(
+            &ctx.to_attribute_ident,
+            &ctx.ty,
+            &ctx.to_attribute_target_ident,
+        );
         let (ts, root_ty) = expand_attribute_value(
             &ctx.to_attribute_ident,
             &ctx.from_attribute_ident,
@@ -572,7 +611,11 @@ mod test_attribute_value {
         };
 
         number_list_types.iter().try_for_each(|t| {
-            let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+            let container = Container::new(
+                &ctx.to_attribute_ident,
+                &ctx.ty,
+                &ctx.to_attribute_target_ident,
+            );
             let (ts, root_ty) = expand_attribute_value(
                 &ctx.to_attribute_ident,
                 &ctx.from_attribute_ident,
@@ -598,7 +641,11 @@ mod test_attribute_value {
             )
         };
 
-        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+        let container = Container::new(
+            &ctx.to_attribute_ident,
+            &ctx.ty,
+            &ctx.to_attribute_target_ident,
+        );
         let (ts, root_ty) = expand_attribute_value(
             &ctx.to_attribute_ident,
             &ctx.from_attribute_ident,
@@ -634,7 +681,11 @@ mod test_attribute_value {
         };
 
         nested_number_list_types.iter().try_for_each(|t| {
-            let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+            let container = Container::new(
+                &ctx.to_attribute_ident,
+                &ctx.ty,
+                &ctx.to_attribute_target_ident,
+            );
             let (expanded_container, root_ty) = expand_attribute_value(
                 &ctx.to_attribute_ident,
                 &ctx.from_attribute_ident,
@@ -657,7 +708,11 @@ mod test_attribute_value {
     #[test]
     fn test_map_not_string_key_fail(ctx: &mut AttrValueCtx) {
         let map = parse_quote! { HashMap<i32, String> };
-        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+        let container = Container::new(
+            &ctx.to_attribute_ident,
+            &ctx.ty,
+            &ctx.to_attribute_target_ident,
+        );
         let err = expand_attribute_value(
             &ctx.to_attribute_ident,
             &ctx.from_attribute_ident,
@@ -694,7 +749,11 @@ mod test_attribute_value {
         };
 
         number_map_types.iter().try_for_each(|t| {
-            let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+            let container = Container::new(
+                &ctx.to_attribute_ident,
+                &ctx.ty,
+                &ctx.to_attribute_target_ident,
+            );
             let (ts, root_ty) = expand_attribute_value(
                 &ctx.to_attribute_ident,
                 &ctx.from_attribute_ident,
@@ -742,7 +801,11 @@ mod test_attribute_value {
                 ::aws_sdk_dynamodb::types::AttributeValue::M(__private_tobe_map)
             }
         };
-        let container = Container::new(&ctx.to_attribute_ident, &ctx.ty);
+        let container = Container::new(
+            &ctx.to_attribute_ident,
+            &ctx.ty,
+            &ctx.to_attribute_target_ident,
+        );
         let (ts, root_ty) = expand_attribute_value(
             &ctx.to_attribute_ident,
             &ctx.from_attribute_ident,
