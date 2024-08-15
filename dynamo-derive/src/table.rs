@@ -1,12 +1,12 @@
-mod container;
 mod parser;
+mod tags;
 
-pub use container::Container;
-
+use crate::container::Container;
 use crate::dynamo::attribute_definition::expand_attribute_definition;
 use crate::dynamo::attribute_value::expand_attribute_value;
 use crate::dynamo::key_schema::{expand_key_schema, validate_and_sort_key_schemas, KeySchemaType};
-use crate::table::parser::parse_keys;
+use crate::table::parser::parse_from_attrs;
+use crate::table::tags::{KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX, TABLE_ATTR_META_ENTRY};
 use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
@@ -14,11 +14,6 @@ use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DataStruct, DeriveInput, Error, LitStr, Result, Visibility};
-
-const KEY_TABLE_NAME: &str = "table_name";
-const TABLE_ATTR_META_ENTRY: &str = "table";
-
-const PRIMARY_KEY_INPUT_STRUCT_POSTFIX: &str = "PrimaryKey";
 
 pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     let input_span = input.span();
@@ -37,8 +32,10 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         _ => return Err(Error::new(input.span(), "only struct type available")),
     };
 
+    let to_attribute_ident = quote! { self };
     let from_attribute_ident = quote! { value };
-    let attribute_types_containers = get_attribute_types_containers(ds, &from_attribute_ident)?;
+    let attribute_types_containers =
+        get_attribute_types_containers(ds, &to_attribute_ident, &from_attribute_ident)?;
 
     let prelude_structs = expand_prelude_structs(vis, ident, &attribute_types_containers);
 
@@ -94,6 +91,7 @@ fn get_table_name(id: &Ident, attrs: &[Attribute]) -> Result<LitStr> {
 
 fn get_attribute_types_containers<'a>(
     ds: &'a DataStruct,
+    to_attribute_ident: &'a TokenStream,
     from_attribute_ident: &'a TokenStream,
 ) -> Result<Vec<Container<'a>>> {
     let mut containers = vec![];
@@ -104,11 +102,11 @@ fn get_attribute_types_containers<'a>(
             .ident
             .as_ref()
             .ok_or(Error::new(field.ident.span(), "field ident not found"))?;
-        let container = Container::new(ident, ty);
+        let container = Container::new(ident, ty, to_attribute_ident);
         let (mut container, attribute_value_type) =
             expand_attribute_value(ident, from_attribute_ident, ty, 0, container)?;
 
-        parse_keys(
+        parse_from_attrs(
             &field.attrs,
             field,
             attribute_value_type,

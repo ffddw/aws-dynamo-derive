@@ -1,7 +1,7 @@
-use super::TABLE_ATTR_META_ENTRY;
 use crate::dynamo::attribute_definition::ScalarAttributeType;
 use crate::dynamo::attribute_value::AttributeValueType;
 use crate::dynamo::key_schema::KeySchemaType;
+use crate::table::tags::TABLE_ATTR_META_ENTRY;
 use crate::util::strip_quote_mark;
 
 use proc_macro2::Literal;
@@ -13,7 +13,7 @@ use syn::{parenthesized, Attribute, Error, Field, LitStr, Result};
 const GLOBAL_SECONDARY_INDEX_ENTRY: &str = "global_secondary_index";
 const GLOBAL_SECONDARY_INDEX_NAME: &str = "index_name";
 
-pub fn parse_keys(
+pub fn parse_from_attrs(
     attrs: &[Attribute],
     field: &Field,
     attribute_value_type: AttributeValueType,
