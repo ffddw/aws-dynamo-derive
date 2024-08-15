@@ -19,60 +19,91 @@ async fn main() {
         #[table(hash_key("S"))]
         #[table(global_secondary_index(index_name = "foo_index_1", hash_key("S")))]
         name: String,
+        temp: i128,
+        values: Values,
     }
+    
+    // values must implements Clone
+    #[derive(Item, Clone)]
+    struct Values {
+        count: u32,
+        count2: u64,
+    }
+}
+```
 
-    let config = aws_config::load_from_env().await;
-    let client = Client::new(&config);
+### Create Table
+```rust
+async fn create_table() {
+    // accepts CreateTableFluentBuilder
+    let create_table_builder = FooTable::create_table(client.create_table())
+        .global_secondary_indexes(gsi_builder)
+        .provisioned_throughput(provisioned_throughput)
+        .send()
+        .await?;
+}
 
-    let provisioned_throughput = ProvisionedThroughput::builder()
-        .read_capacity_units(10)
-        .write_capacity_units(30)
-        .build()
-        .unwrap();
+```
 
-    let idx_name = "foo_index_1";
+### GlobalSecondaryIndexes
+```rust
+async fn create_gsi() {
+    // returns HashMap
     let gsi_key_schemas = FooTable::get_global_secondary_index_key_schemas();
     let gsi_builder = GlobalSecondaryIndex::builder()
         .index_name(idx_name)
-        .set_key_schema(Some(gsi_key_schemas.get(idx_name).unwrap().clone()))
+        // defined with attribute
+        .set_key_schema(Some(gsi_key_schemas.get("foo_index_1").unwrap().clone()))
         .provisioned_throughput(provisioned_throughput.clone())
-        .projection(
-            Projection::builder()
-                .projection_type(ProjectionType::All)
-                .build(),
+        .projection(Projection::builder()
+            .projection_type(ProjectionType::All)
+            .build(),
         )
         .build()
         .unwrap();
+}
+```
 
-    // do some extra work with create_table_builder
-    let create_table_builder = FooTable::create_table(client.create_table())
-        .global_secondary_indexes(gsi_builder)
-        .provisioned_throughput(provisioned_throughput);
-
-    let res = create_table_builder.send().await;
+### PutItem
+```rust
+async fn put_item() {
+    let values = Values {
+        count: 1,
+        count2: 2
+    };
 
     let foo = FooTable {
         index: 1,
         name: "foo".to_string(),
+        // nested struct turns into AttributeValue::M
+        value,
     };
 
-    // do some extra work with put_item_builder
-    let put_item_builder = foo.put_item(client.put_item());
-    let _ = put_item_builder.send().await;
+    foo.put_item(client.put_item()).send().await?;
+}
+```
 
-    // macro expands input struct for primary key
+### GetItem with PrimaryKey
+```rust
+async fn get_item_by_primary_key() {
+    // macro expands input struct for primary key `FooTablePrimaryKey`
     let primary_key = FooTable::get_primary_keys(FooTablePrimaryKey {
         index: 1,
         name: "foo".to_string()
     });
-    
+
     // query with primary keys
-    let _ = client
+    let resp = client
         .get_item()
         .table_name(FooTable::get_table_name())
         .set_key(Some(primary_key))
         .send()
-        .await;
+        .await?
+        .item();
+    
+    let item = resp.item().unwrap();
+    // returns error if type conversion is invalid
+    let converted = FooTable::from_attribute_value(item).unwrap();
 }
 ```
 
