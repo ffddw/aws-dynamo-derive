@@ -12,12 +12,12 @@ use crab_box_dynamo_derive::Table;
 #[tokio::test]
 async fn main() {
     #[derive(Table)]
-    #[table(table_name = "AwesomeFooTable")]
+    #[dynamo(table_name = "AwesomeFooTable")]
     struct FooTable {
-        #[table(range_key)]
+        #[dynamo(range_key)]
         index: u64,
-        #[table(hash_key)]
-        #[table(global_secondary_index(index_name = "foo_index_1", hash_key))]
+        #[dynamo(hash_key)]
+        #[dynamo(global_secondary_index(index_name = "foo_index_1", hash_key))]
         name: String,
         temp: i128,
         values: Values,
@@ -109,7 +109,7 @@ async fn get_item_by_primary_key() {
 
 ### KeySchemas and AttributeDefinitions
 
-Struct fields decorated with `#[table(range_key)]` add `KeyType::Range` KeySchema, and by field type, macro maps 
+Struct fields decorated with `#[dynamo(range_key)]` add `KeyType::Range` KeySchema, and by field type, macro maps 
 AttributeDefinitions.
 
 Available KeySchemas:
