@@ -10,36 +10,36 @@ use std::collections::HashMap;
 /// ```compile_fail
 /// #[derive(Table)]
 ///     struct Table {
-///         #[table(hash_key)]
+///         #[dynamo(hash_key)]
 ///         hash_key: String,
-///         #[table(hash_key)] // compile fails: exactly one hash key allowed
+///         #[dynamo(hash_key)] // compile fails: exactly one hash key allowed
 ///         duplicated_hash_key: String,
 ///     }
 ///
 ///
 /// #[derive(Table)]
 ///     struct Table {
-///         #[table(hash_key)]
+///         #[dynamo(hash_key)]
 ///         hash_key: String,
-///         #[table(range_key)]
+///         #[dynamo(range_key)]
 ///         range_key: u32,
-///         #[table(range_key)]
+///         #[dynamo(range_key)]
 ///         duplicated_range_key: u32, // compile fails: more than one range key
 ///     }
 
 #[tokio::test]
 async fn test_create_table_and_put_item() {
     #[derive(Table)]
-    #[table(table_name = "AwesomeFooTable")]
+    #[dynamo(table_name = "AwesomeFooTable")]
     pub struct FooTable {
-        #[table(range_key)]
-        #[table(global_secondary_index(index_name = "idx", range_key))]
+        #[dynamo(range_key)]
+        #[dynamo(global_secondary_index(index_name = "idx", range_key))]
         range_key: u32,
-        #[table(hash_key)]
+        #[dynamo(hash_key)]
         primary: String,
-        #[table(global_secondary_index(index_name = "idx", hash_key))]
+        #[dynamo(global_secondary_index(index_name = "idx", hash_key))]
         hash_key: String,
-        #[table(global_secondary_index(index_name = "idx2", hash_key))]
+        #[dynamo(global_secondary_index(index_name = "idx2", hash_key))]
         gsi_idx: String,
         a: Vec<Vec<Vec<String>>>,
         bool: bool,
@@ -169,7 +169,7 @@ async fn test_create_table_and_put_item() {
 async fn attribute_value_to_rust_types() {
     #[derive(Debug, Table, Eq, PartialEq)]
     pub struct FooTable {
-        #[table(hash_key)]
+        #[dynamo(hash_key)]
         hash_key: String,
         num: u32,
         vec_of_num: Vec<u128>,
@@ -222,7 +222,7 @@ async fn attribute_value_to_rust_types() {
 async fn attribute_value_to_rust_types_checks() {
     #[derive(Debug, Table, Eq, PartialEq)]
     pub struct FooTable {
-        #[table(hash_key)]
+        #[dynamo(hash_key)]
         hash_key: String,
         vec_of_num: Vec<u128>,
     }
@@ -255,9 +255,9 @@ async fn attribute_value_to_rust_types_checks() {
 async fn test_get_primary_keys() {
     #[derive(Debug, Table, Eq, PartialEq)]
     pub struct FooTable {
-        #[table(range_key)]
+        #[dynamo(range_key)]
         range_key: u32,
-        #[table(hash_key)]
+        #[dynamo(hash_key)]
         hash_key: String,
     }
 

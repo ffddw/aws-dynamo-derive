@@ -1,7 +1,7 @@
 use crate::dynamo::attribute_definition::ScalarAttributeType;
 use crate::dynamo::attribute_value::AttributeValueType;
 use crate::dynamo::key_schema::KeySchemaType;
-use crate::table::tags::TABLE_ATTR_META_ENTRY;
+use crate::table::tags::DYNAMO_ATTR_META_ENTRY;
 use crate::util::strip_quote_mark;
 
 use proc_macro2::Literal;
@@ -22,7 +22,7 @@ pub fn parse_from_attrs(
     global_secondary_indexes: &mut BTreeMap<String, Vec<KeySchemaType>>,
 ) -> Result<()> {
     for attr in attrs {
-        if attr.path().is_ident(TABLE_ATTR_META_ENTRY) {
+        if attr.path().is_ident(DYNAMO_ATTR_META_ENTRY) {
             attr.parse_nested_meta(|table_meta| {
                 parse_key_schemas(
                     field,

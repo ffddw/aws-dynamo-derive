@@ -6,7 +6,9 @@ use crate::dynamo::attribute_definition::expand_attribute_definition;
 use crate::dynamo::attribute_value::expand_attribute_value;
 use crate::dynamo::key_schema::{expand_key_schema, validate_and_sort_key_schemas, KeySchemaType};
 use crate::table::parser::parse_from_attrs;
-use crate::table::tags::{KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX, TABLE_ATTR_META_ENTRY};
+use crate::table::tags::{
+    DYNAMO_ATTR_META_ENTRY, KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX,
+};
 use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
@@ -77,7 +79,7 @@ fn get_table_name(id: &Ident, attrs: &[Attribute]) -> Result<LitStr> {
     let mut table_name = LitStr::new(&to_pascal_case(&id.to_string()), id.span());
 
     for attr in attrs {
-        if attr.path().is_ident(TABLE_ATTR_META_ENTRY) {
+        if attr.path().is_ident(DYNAMO_ATTR_META_ENTRY) {
             attr.parse_nested_meta(|table| {
                 if table.path.is_ident(KEY_TABLE_NAME) {
                     table_name = table.value()?.parse()?;
