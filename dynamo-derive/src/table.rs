@@ -49,6 +49,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         from_attribute_value_fn,
         put_item_fn,
         get_primary_keys_fn,
+        conversions,
     ) = (
         expand_get_table_name_fn(&table_name),
         expand_create_table_fn(&attribute_types_containers, &table_name, input_span)?,
@@ -56,10 +57,16 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         expand_from_attribute_value_fn(&attribute_types_containers, &from_attribute_ident),
         expand_put_item_fn(&attribute_types_containers, &table_name),
         expand_get_primary_keys_fn(ident, &attribute_types_containers)?,
+        expand_impl_conversions(ident, ds)?,
     );
 
     Ok(quote! {
-         #( #prelude_structs )*
+        #( #prelude_structs )*
+
+        #(
+            #[allow(clippy::needless_question_mark)]
+            #conversions
+        )*
 
         #[allow(clippy::map_clone)]
         #[allow(clippy::needless_question_mark)]
@@ -329,4 +336,89 @@ fn expand_get_primary_keys_fn(
             primary_keys
         }
     })
+}
+
+fn expand_impl_conversions(ident: &Ident, ds: &DataStruct) -> Result<Vec<TokenStream>> {
+    let mut impls = vec![];
+    let to_attribute_ident = quote! { value };
+    let from_attribute_ident = quote! { value };
+
+    let containers =
+        get_attribute_types_containers(ds, &to_attribute_ident, &from_attribute_ident)?;
+
+    let map_inserts = containers
+        .iter()
+        .map(|c| {
+            let ident_key = to_pascal_case(&c.field_ident.to_string());
+            let to_attribute_token = &c.to_attribute_token_stream;
+            quote! {
+                map.insert(#ident_key.to_string(), #to_attribute_token);
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let from_attr_fields = containers
+        .iter()
+        .map(|c| {
+            let field_ident = c.field_ident;
+            let from_attribute_token = &c.from_attribute_token_stream;
+            quote! {
+                #field_ident: #from_attribute_token
+            }
+        })
+        .collect::<Vec<_>>();
+
+    impls.push(quote! {
+        impl From<#ident> for ::std::collections::HashMap<
+            ::std::string::String,
+            ::aws_sdk_dynamodb::types::AttributeValue> {
+            fn from(value: #ident) -> Self {
+                (&value).into()
+            }
+        }
+    });
+
+    impls.push(quote! {
+        impl From<&#ident> for ::std::collections::HashMap<
+            ::std::string::String,
+            ::aws_sdk_dynamodb::types::AttributeValue> {
+            fn from(value: &#ident) -> Self {
+                let mut map = ::std::collections::HashMap::new();
+                #( #map_inserts )*
+                map
+            }
+        }
+    });
+
+    impls.push(quote! {
+        impl TryFrom<::std::collections::HashMap<
+            ::std::string::String,
+            ::aws_sdk_dynamodb::types::AttributeValue>>
+        for #ident {
+            type Error = ::aws_sdk_dynamodb::types::AttributeValue;
+            fn try_from(value: ::std::collections::HashMap<
+                ::std::string::String,
+                ::aws_sdk_dynamodb::types::AttributeValue>
+            ) -> Result<Self, Self::Error> {
+                (&value).try_into()
+            }
+        }
+    });
+
+    impls.push(quote! {
+        impl TryFrom<&::std::collections::HashMap<
+            ::std::string::String,
+            ::aws_sdk_dynamodb::types::AttributeValue>>
+        for #ident {
+            type Error = ::aws_sdk_dynamodb::types::AttributeValue;
+            fn try_from(value: &::std::collections::HashMap<
+                ::std::string::String,
+                ::aws_sdk_dynamodb::types::AttributeValue>
+            ) -> Result<Self, Self::Error> {
+                Ok(Self { #(# from_attr_fields ), * })
+            }
+        }
+    });
+
+    Ok(impls)
 }

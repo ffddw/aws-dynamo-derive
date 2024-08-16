@@ -19,10 +19,14 @@ pub fn expand_item(input: &mut DeriveInput) -> Result<TokenStream> {
     let from_attribute_ident = quote! { value };
     let containers =
         get_attribute_types_containers(ds, &to_attribute_ident, &from_attribute_ident)?;
-    let impl_conversions = expand_impl_conversions(ident, &containers);
+    let impl_conversions = expand_impl_conversions(ident, &containers)?;
 
     Ok(quote! {
-        #impl_conversions
+
+        #(
+            #[allow(clippy::needless_question_mark)]
+            #impl_conversions
+        )*
     })
 }
 
@@ -48,7 +52,9 @@ fn get_attribute_types_containers<'a>(
     Ok(containers)
 }
 
-fn expand_impl_conversions(ident: &Ident, containers: &[Container]) -> TokenStream {
+fn expand_impl_conversions(ident: &Ident, containers: &[Container]) -> Result<Vec<TokenStream>> {
+    let mut impls = vec![];
+
     let map_inserts = containers
         .iter()
         .map(|c| {
@@ -71,7 +77,17 @@ fn expand_impl_conversions(ident: &Ident, containers: &[Container]) -> TokenStre
         })
         .collect::<Vec<_>>();
 
-    quote! {
+    impls.push(quote! {
+        impl From<#ident> for ::std::collections::HashMap<
+            ::std::string::String,
+            ::aws_sdk_dynamodb::types::AttributeValue> {
+            fn from(value: #ident) -> Self {
+                (&value).into()
+            }
+        }
+    });
+
+    impls.push(quote! {
         impl From<&#ident> for ::std::collections::HashMap<
             ::std::string::String,
             ::aws_sdk_dynamodb::types::AttributeValue> {
@@ -81,11 +97,28 @@ fn expand_impl_conversions(ident: &Ident, containers: &[Container]) -> TokenStre
                 map
             }
         }
+    });
 
+    impls.push(quote! {
+        impl TryFrom<::std::collections::HashMap<
+            ::std::string::String,
+            ::aws_sdk_dynamodb::types::AttributeValue>>
+        for #ident {
+            type Error = ::aws_sdk_dynamodb::types::AttributeValue;
+            fn try_from(value: ::std::collections::HashMap<
+                ::std::string::String,
+                ::aws_sdk_dynamodb::types::AttributeValue>
+            ) -> Result<Self, Self::Error> {
+                (&value).try_into()
+            }
+        }
+    });
+
+    impls.push(quote! {
         impl TryFrom<&::std::collections::HashMap<
             ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue,
-        >> for #ident {
+            ::aws_sdk_dynamodb::types::AttributeValue>>
+        for #ident {
             type Error = ::aws_sdk_dynamodb::types::AttributeValue;
             fn try_from(value: &::std::collections::HashMap<
                 ::std::string::String,
@@ -94,5 +127,7 @@ fn expand_impl_conversions(ident: &Ident, containers: &[Container]) -> TokenStre
                 Ok(Self { #(# from_attr_fields ), * })
             }
         }
-    }
+    });
+
+    Ok(impls)
 }

@@ -214,8 +214,12 @@ async fn attribute_value_to_rust_types() {
         .as_ref()
         .unwrap()
         .clone();
+
     let foo_table2 = FooTable::from_attribute_value(&items).unwrap();
+    let foo_table3: FooTable = items.try_into().unwrap();
+
     assert_eq!(foo_table, foo_table2);
+    assert_eq!(foo_table2, foo_table3);
 }
 
 #[tokio::test]

@@ -46,5 +46,8 @@ async fn test_conversions() {
     assert_eq!(item.get("Inner"), expected_map.get("Inner"));
 
     let outer = Outer::from_attribute_value(&expected_map).unwrap();
+    let outer2: Outer = expected_map.try_into().unwrap();
+
     assert_eq!(outer, expected_outer);
+    assert_eq!(expected_outer, outer2);
 }
