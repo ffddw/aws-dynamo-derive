@@ -7,7 +7,7 @@ use std::collections::HashMap;
 async fn test_conversions() {
     #[derive(Table, Debug, Eq, PartialEq)]
     struct Outer {
-        #[dynamo(hash_key)]
+        #[aws_dynamo(hash_key)]
         hk: String,
         inner: Vec<Inner>,
     }

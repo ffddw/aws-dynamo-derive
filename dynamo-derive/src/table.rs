@@ -1,13 +1,13 @@
 mod parser;
 mod tags;
 
+use crate::container;
 use crate::container::Container;
-use crate::dynamo::attribute_definition::expand_attribute_definition;
 use crate::dynamo::attribute_value::expand_attribute_value;
 use crate::dynamo::key_schema::{expand_key_schema, validate_and_sort_key_schemas, KeySchemaType};
 use crate::table::parser::parse_from_attrs;
 use crate::table::tags::{
-    DYNAMO_ATTR_META_ENTRY, KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX,
+    AWS_DYNAMO_ATTR_META_ENTRY, KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX,
 };
 use crate::util::to_pascal_case;
 
@@ -86,7 +86,7 @@ fn get_table_name(id: &Ident, attrs: &[Attribute]) -> Result<LitStr> {
     let mut table_name = LitStr::new(&to_pascal_case(&id.to_string()), id.span());
 
     for attr in attrs {
-        if attr.path().is_ident(DYNAMO_ATTR_META_ENTRY) {
+        if attr.path().is_ident(AWS_DYNAMO_ATTR_META_ENTRY) {
             attr.parse_nested_meta(|table| {
                 if table.path.is_ident(KEY_TABLE_NAME) {
                     table_name = table.value()?.parse()?;
@@ -148,7 +148,7 @@ fn expand_create_table_fn(
         .flat_map(|c| {
             c.attribute_definitions
                 .iter()
-                .map(|ad| expand_attribute_definition(c.field_ident, ad))
+                .map(|ad| ad.expand_attribute_definition(c.field_ident))
         })
         .collect::<Vec<_>>();
 
@@ -339,86 +339,11 @@ fn expand_get_primary_keys_fn(
 }
 
 fn expand_impl_conversions(ident: &Ident, ds: &DataStruct) -> Result<Vec<TokenStream>> {
-    let mut impls = vec![];
     let to_attribute_ident = quote! { value };
     let from_attribute_ident = quote! { value };
 
     let containers =
         get_attribute_types_containers(ds, &to_attribute_ident, &from_attribute_ident)?;
 
-    let map_inserts = containers
-        .iter()
-        .map(|c| {
-            let ident_key = to_pascal_case(&c.field_ident.to_string());
-            let to_attribute_token = &c.to_attribute_token_stream;
-            quote! {
-                map.insert(#ident_key.to_string(), #to_attribute_token);
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let from_attr_fields = containers
-        .iter()
-        .map(|c| {
-            let field_ident = c.field_ident;
-            let from_attribute_token = &c.from_attribute_token_stream;
-            quote! {
-                #field_ident: #from_attribute_token
-            }
-        })
-        .collect::<Vec<_>>();
-
-    impls.push(quote! {
-        impl From<#ident> for ::std::collections::HashMap<
-            ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue> {
-            fn from(value: #ident) -> Self {
-                (&value).into()
-            }
-        }
-    });
-
-    impls.push(quote! {
-        impl From<&#ident> for ::std::collections::HashMap<
-            ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue> {
-            fn from(value: &#ident) -> Self {
-                let mut map = ::std::collections::HashMap::new();
-                #( #map_inserts )*
-                map
-            }
-        }
-    });
-
-    impls.push(quote! {
-        impl TryFrom<::std::collections::HashMap<
-            ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue>>
-        for #ident {
-            type Error = ::aws_sdk_dynamodb::types::AttributeValue;
-            fn try_from(value: ::std::collections::HashMap<
-                ::std::string::String,
-                ::aws_sdk_dynamodb::types::AttributeValue>
-            ) -> Result<Self, Self::Error> {
-                (&value).try_into()
-            }
-        }
-    });
-
-    impls.push(quote! {
-        impl TryFrom<&::std::collections::HashMap<
-            ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue>>
-        for #ident {
-            type Error = ::aws_sdk_dynamodb::types::AttributeValue;
-            fn try_from(value: &::std::collections::HashMap<
-                ::std::string::String,
-                ::aws_sdk_dynamodb::types::AttributeValue>
-            ) -> Result<Self, Self::Error> {
-                Ok(Self { #(# from_attr_fields ), * })
-            }
-        }
-    });
-
-    Ok(impls)
+    container::expand_impl_conversions(ident, &containers)
 }
