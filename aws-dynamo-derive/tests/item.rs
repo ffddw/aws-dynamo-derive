@@ -1,6 +1,6 @@
 use aws_sdk_dynamodb::types::AttributeValue;
 use aws_sdk_dynamodb::Client;
-use crab_box_dynamo_derive::{Item, Table};
+use crab_box_aws_dynamo_derive::{Item, Table};
 use std::collections::HashMap;
 
 #[tokio::test]

@@ -3,7 +3,7 @@ use aws_sdk_dynamodb::types::{
     AttributeDefinition, AttributeValue, KeySchemaElement, KeyType, ScalarAttributeType,
 };
 use aws_sdk_dynamodb::Client;
-use crab_box_dynamo_derive::Table;
+use crab_box_aws_dynamo_derive::Table;
 use std::collections::HashMap;
 
 /// ## Compile fail cases

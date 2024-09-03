@@ -7,7 +7,7 @@ Generates conversion codes from Rust primitive types to AWS DynamoDB types.
 ## Examples
 
 ```rust
-use crab_box_dynamo_derive::Table;
+use crab_box_aws_dynamo_derive::Table;
 
 #[tokio::test]
 async fn main() {
