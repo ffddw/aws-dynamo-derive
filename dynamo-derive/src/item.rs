@@ -1,8 +1,7 @@
-use crate::container::Container;
+use crate::container::{expand_impl_conversions, Container};
 use crate::dynamo::attribute_value::expand_attribute_value;
-use crate::util::to_pascal_case;
 
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
 use syn::{Data, DataStruct, DeriveInput, Error, Result};
@@ -50,84 +49,4 @@ fn get_attribute_types_containers<'a>(
     }
 
     Ok(containers)
-}
-
-fn expand_impl_conversions(ident: &Ident, containers: &[Container]) -> Result<Vec<TokenStream>> {
-    let mut impls = vec![];
-
-    let map_inserts = containers
-        .iter()
-        .map(|c| {
-            let ident_key = to_pascal_case(&c.field_ident.to_string());
-            let to_attribute_token = &c.to_attribute_token_stream;
-            quote! {
-                map.insert(#ident_key.to_string(), #to_attribute_token);
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let from_attr_fields = containers
-        .iter()
-        .map(|c| {
-            let field_ident = c.field_ident;
-            let from_attribute_token = &c.from_attribute_token_stream;
-            quote! {
-                #field_ident: #from_attribute_token
-            }
-        })
-        .collect::<Vec<_>>();
-
-    impls.push(quote! {
-        impl From<#ident> for ::std::collections::HashMap<
-            ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue> {
-            fn from(value: #ident) -> Self {
-                (&value).into()
-            }
-        }
-    });
-
-    impls.push(quote! {
-        impl From<&#ident> for ::std::collections::HashMap<
-            ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue> {
-            fn from(value: &#ident) -> Self {
-                let mut map = ::std::collections::HashMap::new();
-                #( #map_inserts )*
-                map
-            }
-        }
-    });
-
-    impls.push(quote! {
-        impl TryFrom<::std::collections::HashMap<
-            ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue>>
-        for #ident {
-            type Error = ::aws_sdk_dynamodb::types::AttributeValue;
-            fn try_from(value: ::std::collections::HashMap<
-                ::std::string::String,
-                ::aws_sdk_dynamodb::types::AttributeValue>
-            ) -> Result<Self, Self::Error> {
-                (&value).try_into()
-            }
-        }
-    });
-
-    impls.push(quote! {
-        impl TryFrom<&::std::collections::HashMap<
-            ::std::string::String,
-            ::aws_sdk_dynamodb::types::AttributeValue>>
-        for #ident {
-            type Error = ::aws_sdk_dynamodb::types::AttributeValue;
-            fn try_from(value: &::std::collections::HashMap<
-                ::std::string::String,
-                ::aws_sdk_dynamodb::types::AttributeValue>
-            ) -> Result<Self, Self::Error> {
-                Ok(Self { #(# from_attr_fields ), * })
-            }
-        }
-    });
-
-    Ok(impls)
 }
