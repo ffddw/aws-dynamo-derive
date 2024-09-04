@@ -37,8 +37,8 @@ this generates
 
 ### KeySchemas and AttributeDefinitions
 
-Struct fields decorated with `#[aws_dynamo(hash_key)]` add `KeyType::Hash` KeySchema, and by data type of field, macro maps 
-AttributeDefinitions.
+Struct fields decorated with `#[aws_dynamo(hash_key)]` add `KeyType::Hash` KeySchemas, and by data type of the fields, macro maps 
+those to AttributeDefinitions.
 
 Available KeySchemas:
 
