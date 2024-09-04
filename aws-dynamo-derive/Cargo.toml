@@ -2,6 +2,14 @@
 name = "aws-dynamo-derive"
 version = "0.2.1"
 edition = "2021"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/ffddw/aws-dynamo-derive"
+description = """
+Helper crate for aws-sdk-dynamodb.
+"""
+categories = ["api-bindings"]
+keywords = ["dynamodb", "aws-sdk"]
 
 [lib]
 proc-macro = true
@@ -14,5 +22,8 @@ syn = { workspace = true }
 [dev-dependencies]
 aws-config = { workspace = true }
 aws-sdk-dynamodb = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
 test-context = { workspace = true }
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]
