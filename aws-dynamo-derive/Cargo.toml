@@ -1,5 +1,5 @@
 [package]
-name = "crab-box-aws-dynamo-derive"
+name = "aws-dynamo-derive"
 version = "0.2.1"
 edition = "2021"
 

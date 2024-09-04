@@ -3,113 +3,41 @@
 Helper crate for [aws-sdk-dynamodb](https://docs.rs/aws-sdk-dynamodb/latest/aws_sdk_dynamodb/).
 
 Generates conversion codes from Rust primitive types to AWS DynamoDB types.
+Works well with nested types!
 
-## Examples
-
+### Example
 ```rust
-use crab_box_aws_dynamo_derive::Table;
+use aws_dynamo_derive::{Item, Table};
 
-#[tokio::test]
-async fn main() {
-    #[derive(Table)]
-    #[aws_dynamo(table_name = "AwesomeFooTable")]
-    struct FooTable {
-        #[aws_dynamo(range_key)]
-        index: u64,
-        #[aws_dynamo(hash_key)]
-        #[aws_dynamo(global_secondary_index(index_name = "foo_index_1", hash_key))]
-        name: String,
-        temp: i128,
-        values: Values,
-    }
-    
-    // values must implements Clone
-    #[derive(Item, Clone)]
-    struct Values {
-        count: u32,
-        count2: u64,
-    }
-}
-```
-
-### Create Table
-```rust
-async fn create_table() {
-    // accepts CreateTableFluentBuilder
-    let create_table_builder = FooTable::create_table(client.create_table())
-        .global_secondary_indexes(gsi_builder)
-        .provisioned_throughput(provisioned_throughput)
-        .send()
-        .await?;
+#[derive(Table)]
+struct Foo {
+    #[aws_dynamo(hash_key)]
+    pub name: String,
+    pub value: Value
 }
 
-```
-
-### GlobalSecondaryIndexes
-```rust
-async fn create_gsi() {
-    // returns HashMap
-    let gsi_key_schemas = FooTable::get_global_secondary_index_key_schemas();
-    let gsi_builder = GlobalSecondaryIndex::builder()
-        .index_name(idx_name)
-        // defined with attribute
-        .set_key_schema(Some(gsi_key_schemas.get("foo_index_1").unwrap().clone()))
-        .provisioned_throughput(provisioned_throughput.clone())
-        .projection(Projection::builder()
-            .projection_type(ProjectionType::All)
-            .build(),
-        )
-        .build()
-        .unwrap();
+#[derive(Item, Clone)]
+struct Value {
+    pub numbers: Vec<u64>,
+    pub list_of_ss: Vec<Vec<String>>, 
 }
 ```
-
-### PutItem
-```rust
-async fn put_item() {
-    let values = Values {
-        count: 1,
-        count2: 2
-    };
-
-    let foo = FooTable {
-        index: 1,
-        name: "foo".to_string(),
-        // nested struct turns into AttributeValue::M
-        value,
-    };
-
-    foo.put_item(client.put_item()).send().await?;
-}
+this generates
 ```
-
-### GetItem with PrimaryKey
-```rust
-async fn get_item_by_primary_key() {
-    // macro expands input struct for primary key `FooTablePrimaryKey`
-    let primary_key = FooTable::get_primary_keys(FooTablePrimaryKey {
-        index: 1,
-        name: "foo".to_string()
-    });
-
-    // query with primary keys
-    let resp = client
-        .get_item()
-        .table_name(FooTable::get_table_name())
-        .set_key(Some(primary_key))
-        .send()
-        .await?
-        .item();
-    
-    let item = resp.item().unwrap();
-    // returns error if type conversion is invalid
-    let converted = FooTable::from_attribute_value(item).unwrap();
+{
+    "Value": M(
+        {
+            "Numbers": Ns(["1", "2", "3"]), 
+            "ListOfSs": L([Ss(["one"]), Ss(["two"]), Ss(["three"])])
+        }
+    ), 
+    "Name": S("foo_value")
 }
 ```
 
 ### KeySchemas and AttributeDefinitions
 
-Struct fields decorated with `#[aws_dynamo(range_key)]` add `KeyType::Range` KeySchema, and by field type, macro maps 
+Struct fields decorated with `#[aws_dynamo(hash_key)]` add `KeyType::Hash` KeySchema, and by data type of field, macro maps 
 AttributeDefinitions.
 
 Available KeySchemas:
@@ -124,15 +52,17 @@ AttributeDefinition mappings:
 
 ### AttributeValue
 
-- `&str`, `String` -> `S`
+- `String` -> `S`
 - `bool` -> `BOOL`
-- `aws_sdk_dynamodb::primitives::Blob` -> `B`
-- `i8 | u8 | .. | u128` -> `N`
-- For `T: String | &str`, `Vec<T>`, `[T; 1]`, `&[T]` -> `SS`
-- For `T: i8 | u8 | .. | u128`, `Vec<T>`, `[T; 1]`, `&[T]` -> `NS`
+- `Blob` -> `B`
+- `i8` | `u8` | `..` | `u128` -> `N`
+- `Vec<String>` -> `SS`
+- For `T`: `i8` | `u8` | `..` | `u128`, `Vec<T>` -> `NS`
+- `Vec<Blob>` -> `Bs`
 - `Option<()>` -> `NULL`
-- If `T` is `Vec<T>` | `[T; 1]` | `&[T]` but not `SS` nor `NS` -> `L`
+- If `T` is `Vec<T>` but not `SS` | `NS` | `Bs` -> `L`
 - `HashMap<String, T>` -> `M`, automatically converts inner values of `HashMap` to `AttributeValue` types.
+- struct that derives `Item` and be converted into `AttributeValue`.
 
 ### GlobalSecondaryIndex
 

@@ -1,9 +1,9 @@
+use aws_dynamo_derive::Table;
 use aws_sdk_dynamodb::primitives::Blob;
 use aws_sdk_dynamodb::types::{
     AttributeDefinition, AttributeValue, KeySchemaElement, KeyType, ScalarAttributeType,
 };
 use aws_sdk_dynamodb::Client;
-use crab_box_aws_dynamo_derive::Table;
 use std::collections::HashMap;
 
 /// ## Compile fail cases
@@ -288,4 +288,43 @@ async fn test_get_primary_keys() {
         .get_item()
         .table_name(FooTable::get_table_name())
         .set_key(Some(primary_key));
+}
+
+#[tokio::test]
+async fn test() {
+    use aws_dynamo_derive::{Item, Table};
+
+    #[derive(Table)]
+    struct Foo {
+        #[aws_dynamo(hash_key)]
+        pub name: String,
+        pub value: Value,
+    }
+
+    #[derive(Item, Clone)]
+    struct Value {
+        pub numbers: Vec<u64>,
+        pub list_of_ss: Vec<Vec<String>>,
+    }
+
+    let config = aws_config::load_from_env().await;
+    let client = Client::new(&config);
+    let table = Foo::create_table(client.create_table());
+    let value = Value {
+        numbers: vec![1, 2, 3],
+        list_of_ss: vec![
+            vec!["one".to_string()],
+            vec!["two".to_string()],
+            vec!["three".to_string()],
+        ],
+    };
+
+    let foo = Foo {
+        name: "foo_value".to_string(),
+        value,
+    };
+
+    let a = foo.put_item(client.put_item());
+    let items = a.get_item();
+    println!("{:?}", items);
 }
