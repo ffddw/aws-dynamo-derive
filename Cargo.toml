@@ -9,6 +9,6 @@ aws-config = { version = "1.5.5", features = ["behavior-version-latest"] }
 aws-sdk-dynamodb = { version = "1.44.0", features = ["behavior-version-latest"] }
 proc-macro2 = "1.0.86"
 quote = "1.0.37"
-syn = "2.0.77"
+syn = { version = "2.0.77", features = ["extra-traits"] }
 test-context = "0.3.0"
 tokio = { version = "1.40.0", features = ["macros"] }
