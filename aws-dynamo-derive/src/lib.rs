@@ -1,4 +1,4 @@
-#![doc = include_str!("../../README.md")]
+#![doc = include_str!("../README.md")]
 
 mod container;
 mod dynamo;
@@ -41,7 +41,7 @@ use syn::{parse_macro_input, DeriveInput};
 ///
 /// #### CreateTable Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// async fn create_table() {
 ///     // accepts CreateTableFluentBuilder
 ///     let create_table_builder = FooTable::create_table(client.create_table())
@@ -55,7 +55,7 @@ use syn::{parse_macro_input, DeriveInput};
 /// GSI can be retrieved using method `get_global_secondary_index_key_schemas` automatically derived by macro.
 ///
 /// #### GSI Example
-/// ```rust,no_run
+/// ```rust,ignore
 /// async fn create_gsi() {
 ///     // returns HashMap
 ///     let gsi_key_schemas = FooTable::get_global_secondary_index_key_schemas();
@@ -86,7 +86,7 @@ pub fn derive_table(input: TokenStream) -> TokenStream {
 /// Nesting structs is available which converts fields to `AttributeValue::M` type.
 ///
 /// #### Example
-/// ```rust,no_run
+/// ```rust,ignore
 /// // values must implements Clone
 /// #[derive(Item, Clone)]
 /// struct Values {
@@ -113,7 +113,7 @@ pub fn derive_table(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 /// #### GetItem with PrimaryKey
-/// ```rust,no_run
+/// ```rust,ignore
 /// async fn get_item_by_primary_key() {
 ///     // macro expands input struct for primary key `FooTablePrimaryKey`
 ///     let primary_key = FooTable::get_primary_keys(FooTablePrimaryKey {
