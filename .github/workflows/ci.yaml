@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ci.yaml
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: [ ubuntu-latest ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Install Rust
+        uses: ffdd/toolchain@master
+        with:
+          toolchain: 1.80.0
+          components: rustfmt
+      - name: Test
+        run: |
+          cargo test --all-targets
+  lint:
+    runs-on: [ ubuntu-latest ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Install Rust
+        uses: ffdd/toolchain@master
+        with:
+          toolchain: 1.80.0
+          components: rustfmt, clippy
+      - name: Lint
+        run: |
+          cargo clippy --all-targets
+          cargo fmt --all -- --check
