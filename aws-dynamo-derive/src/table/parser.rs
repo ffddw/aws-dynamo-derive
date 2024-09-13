@@ -11,7 +11,7 @@ use syn::spanned::Spanned;
 use syn::{Attribute, Field, Result};
 
 const GLOBAL_SECONDARY_INDEX_ENTRY: &str = "global_secondary_index";
-const GLOBAL_SECONDARY_INDEX_NAME: &str = "index_name";
+const SECONDARY_INDEX_NAME: &str = "index_name";
 
 pub fn parse_from_attrs(
     attrs: &[Attribute],
@@ -78,16 +78,16 @@ fn parse_global_secondary_index_key_schemas(
 ) -> Result<()> {
     if table.path.is_ident(GLOBAL_SECONDARY_INDEX_ENTRY) {
         let mut index_name = String::from("");
-        table.parse_nested_meta(|gsi| {
+        table.parse_nested_meta(|nested_meta| {
             let mut key_schemas = vec![];
-            if gsi.path.is_ident(GLOBAL_SECONDARY_INDEX_NAME) {
-                index_name = strip_quote_mark(&gsi.value()?.parse::<Literal>()?.to_string())
-                    .ok_or(gsi.error("invalid index name"))?
+            if nested_meta.path.is_ident(SECONDARY_INDEX_NAME) {
+                index_name = strip_quote_mark(&nested_meta.value()?.parse::<Literal>()?.to_string())
+                    .ok_or(nested_meta.error("invalid index name"))?
                     .to_string();
             } else {
                 parse_key_schemas(
                     field,
-                    &gsi,
+                    &nested_meta,
                     attribute_value_type,
                     &mut key_schemas,
                     attribute_definitions,
@@ -95,7 +95,7 @@ fn parse_global_secondary_index_key_schemas(
             }
 
             if index_name.is_empty() {
-                return Err(gsi.error("empty index name"));
+                return Err(nested_meta.error("empty index name"));
             };
 
             global_secondary_indexes

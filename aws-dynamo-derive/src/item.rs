@@ -37,11 +37,11 @@ fn get_attribute_types_containers<'a>(
     let mut containers = vec![];
 
     for field in &ds.fields {
-        let ty = &field.ty;
         let ident = field
             .ident
             .as_ref()
             .ok_or(Error::new(field.ident.span(), "field ident not found"))?;
+        let ty = &field.ty;
 
         let container = Container::new(ident, ty, to_attribute_ident);
         let (container, _) = expand_attribute_value(ident, from_attribute_ident, ty, 0, container)?;
