@@ -1,10 +1,13 @@
-use aws_dynamo_derive::Table;
+use std::collections::HashMap;
+
 use aws_sdk_dynamodb::primitives::Blob;
 use aws_sdk_dynamodb::types::{
-    AttributeDefinition, AttributeValue, KeySchemaElement, KeyType, ScalarAttributeType,
+    AttributeDefinition, AttributeValue, KeySchemaElement, KeyType, LocalSecondaryIndex,
+    Projection, ProjectionType, ProvisionedThroughput, ScalarAttributeType,
 };
 use aws_sdk_dynamodb::Client;
-use std::collections::HashMap;
+
+use aws_dynamo_derive::Table;
 
 /// ## Compile fail cases
 /// ```compile_fail
@@ -86,11 +89,6 @@ async fn test_create_table_and_put_item() {
                 .unwrap(),
             AttributeDefinition::builder()
                 .attribute_name("Primary")
-                .attribute_type(ScalarAttributeType::S)
-                .build()
-                .unwrap(),
-            AttributeDefinition::builder()
-                .attribute_name("HashKey")
                 .attribute_type(ScalarAttributeType::S)
                 .build()
                 .unwrap(),
@@ -308,4 +306,61 @@ async fn test_get_primary_keys() {
         .get_item()
         .table_name(FooTable::get_table_name())
         .set_key(Some(primary_key));
+}
+
+// docker run -p 8000:8000 --rm amazon/dynamodb-local
+#[ignore]
+#[tokio::test]
+async fn test_local() {
+    std::env::set_var("LOCAL_DYNAMO_URL", "http://localhost:8000");
+
+    #[derive(Table)]
+    #[aws_dynamo(table_name = "AwesomeFooTable")]
+    pub struct FooTable {
+        #[aws_dynamo(range_key)]
+        #[aws_dynamo(global_secondary_index(index_name = "gsi1", range_key))]
+        range_key: u32,
+        #[aws_dynamo(hash_key)]
+        #[aws_dynamo(local_secondary_index(index_name = "lsi1", hash_key))]
+        primary: String,
+        #[aws_dynamo(global_secondary_index(index_name = "gsi1", hash_key))]
+        hash_key: String,
+        #[aws_dynamo(global_secondary_index(index_name = "gsi2", hash_key))]
+        #[aws_dynamo(local_secondary_index(index_name = "lsi1", range_key))]
+        gsi_idx: String,
+        a: Vec<Vec<Vec<String>>>,
+        bool: bool,
+        blob: Vec<Vec<Blob>>,
+        null: Option<()>,
+        nulls: Vec<Option<()>>,
+        map: HashMap<String, Vec<HashMap<String, String>>>,
+    }
+
+    let config = aws_config::load_from_env().await;
+    let client = Client::new(&config);
+
+    let lsi_key_schemas = FooTable::get_local_secondary_index_key_schemas();
+    let lsi_builder = LocalSecondaryIndex::builder()
+        .index_name("lsi1")
+        .set_key_schema(Some(lsi_key_schemas.get("lsi1").unwrap().clone()))
+        .projection(
+            Projection::builder()
+                .projection_type(ProjectionType::All)
+                .build(),
+        )
+        .build()
+        .unwrap();
+
+    FooTable::create_table(client.create_table())
+        .local_secondary_indexes(lsi_builder)
+        .provisioned_throughput(
+            ProvisionedThroughput::builder()
+                .read_capacity_units(1)
+                .write_capacity_units(1)
+                .build()
+                .unwrap(),
+        )
+        .send()
+        .await
+        .unwrap();
 }

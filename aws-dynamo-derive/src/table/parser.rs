@@ -43,9 +43,9 @@ pub fn parse_from_dynamo_attrs(
                     field,
                     &table_meta,
                     attribute_value_type,
-                    &mut container.attribute_definitions,
                     &mut container.global_secondary_index_key_schemas,
                 )?;
+
                 Ok(())
             })?;
         }
@@ -124,9 +124,10 @@ fn parse_global_secondary_index_key_schemas(
     field: &Field,
     table: &ParseNestedMeta,
     attribute_value_type: AttributeValueType,
-    attribute_definitions: &mut Vec<ScalarAttributeType>,
     global_secondary_indexes: &mut BTreeMap<String, Vec<KeySchemaType>>,
 ) -> Result<()> {
+    let mut dummy_attribute_definitions: Vec<ScalarAttributeType> = Vec::new();
+
     if table.path.is_ident(GLOBAL_SECONDARY_INDEX_ENTRY) {
         let mut index_name = String::from("");
         table.parse_nested_meta(|nested_meta| {
@@ -143,7 +144,7 @@ fn parse_global_secondary_index_key_schemas(
                     &nested_meta,
                     attribute_value_type,
                     &mut key_schemas,
-                    attribute_definitions,
+                    &mut dummy_attribute_definitions,
                 )?;
             }
 

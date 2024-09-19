@@ -63,11 +63,10 @@ use syn::{parse_macro_input, DeriveInput};
 /// async fn create_lsi() {
 ///     // returns HashMap
 ///     let lsi_key_schemas = FooTable::get_local_secondary_index_key_schemas();
-///     let lsi_builder = GlobalSecondaryIndex::builder()
+///     let lsi_builder = LocalSecondaryIndex::builder()
 ///         .index_name(idx_name)
 ///         // defined with attribute
 ///         .set_key_schema(Some(lsi_key_schemas.get("foo_index_1").unwrap().clone()))
-///         .provisioned_throughput(provisioned_throughput.clone())
 ///         .projection(Projection::builder()
 ///             .projection_type(ProjectionType::All)
 ///             .build(),
