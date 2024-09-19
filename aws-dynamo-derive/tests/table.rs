@@ -12,7 +12,7 @@ use std::collections::HashMap;
 ///     struct Table {
 ///         #[aws_dynamo(hash_key)]
 ///         hash_key: String,
-///         #[aws_dynamo(hash_key)] // compile fails: exactly one hash key allowed
+///         #[aws_dynamo(hash_key)] // compile fails: only one HashKey is allowed
 ///         duplicated_hash_key: String,
 ///     }
 ///
@@ -24,7 +24,7 @@ use std::collections::HashMap;
 ///         #[aws_dynamo(range_key)]
 ///         range_key: u32,
 ///         #[aws_dynamo(range_key)]
-///         duplicated_range_key: u32, // compile fails: more than one range key
+///         duplicated_range_key: u32, // compile fails: at most one RangeKey is allowed
 ///     }
 
 #[tokio::test]
@@ -33,13 +33,15 @@ async fn test_create_table_and_put_item() {
     #[aws_dynamo(table_name = "AwesomeFooTable")]
     pub struct FooTable {
         #[aws_dynamo(range_key)]
-        #[aws_dynamo(global_secondary_index(index_name = "idx", range_key))]
+        #[aws_dynamo(global_secondary_index(index_name = "gsi1", range_key))]
         range_key: u32,
         #[aws_dynamo(hash_key)]
+        #[aws_dynamo(local_secondary_index(index_name = "lsi1", hash_key))]
         primary: String,
-        #[aws_dynamo(global_secondary_index(index_name = "idx", hash_key))]
+        #[aws_dynamo(global_secondary_index(index_name = "gsi1", hash_key))]
         hash_key: String,
-        #[aws_dynamo(global_secondary_index(index_name = "idx2", hash_key))]
+        #[aws_dynamo(global_secondary_index(index_name = "gsi2", hash_key))]
+        #[aws_dynamo(local_secondary_index(index_name = "lsi1", range_key))]
         gsi_idx: String,
         a: Vec<Vec<Vec<String>>>,
         bool: bool,
@@ -146,8 +148,26 @@ async fn test_create_table_and_put_item() {
     );
     assert_eq!(item.get("Map").unwrap(), &AttributeValue::M(expected_map));
 
+    let local_secondary_indexes = FooTable::get_local_secondary_index_key_schemas();
+    let idx_lsi = local_secondary_indexes.get("lsi1").unwrap();
+    assert_eq!(
+        idx_lsi,
+        &vec![
+            KeySchemaElement::builder()
+                .attribute_name("Primary")
+                .key_type(KeyType::Hash)
+                .build()
+                .unwrap(),
+            KeySchemaElement::builder()
+                .attribute_name("GsiIdx")
+                .key_type(KeyType::Range)
+                .build()
+                .unwrap()
+        ]
+    );
+
     let global_secondary_indexes = FooTable::get_global_secondary_index_key_schemas();
-    let idx_gsi = global_secondary_indexes.get("idx").unwrap();
+    let idx_gsi = global_secondary_indexes.get("gsi1").unwrap();
     assert_eq!(
         idx_gsi,
         &vec![

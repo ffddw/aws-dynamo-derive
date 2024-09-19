@@ -5,7 +5,7 @@ use crate::container;
 use crate::container::Container;
 use crate::dynamo::attribute_value::expand_attribute_value;
 use crate::dynamo::key_schema::{expand_key_schema, validate_and_sort_key_schemas, KeySchemaType};
-use crate::table::parser::parse_from_attrs;
+use crate::table::parser::parse_from_dynamo_attrs;
 use crate::table::tags::{
     AWS_DYNAMO_ATTR_META_ENTRY, KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX,
 };
@@ -45,6 +45,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     let (
         get_table_name_fn,
         create_table_fn,
+        local_secondary_index_key_schemas_fn,
         global_secondary_index_key_schemas_fn,
         from_attribute_value_fn,
         put_item_fn,
@@ -53,6 +54,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     ) = (
         expand_get_table_name_fn(&table_name),
         expand_create_table_fn(&attribute_types_containers, &table_name, input_span)?,
+        expand_local_secondary_index_key_schemas_fn(&attribute_types_containers, input_span)?,
         expand_global_secondary_index_key_schemas_fn(&attribute_types_containers, input_span)?,
         expand_from_attribute_value_fn(&attribute_types_containers, &from_attribute_ident),
         expand_put_item_fn(&attribute_types_containers, &table_name),
@@ -74,6 +76,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         impl #generics #ident #generics {
             #vis #get_table_name_fn
             #vis #create_table_fn
+            #vis #local_secondary_index_key_schemas_fn
             #vis #global_secondary_index_key_schemas_fn
             #vis #from_attribute_value_fn
             #vis #put_item_fn
@@ -115,14 +118,7 @@ fn get_attribute_types_containers<'a>(
         let (mut container, attribute_value_type) =
             expand_attribute_value(ident, from_attribute_ident, ty, 0, container)?;
 
-        parse_from_attrs(
-            &field.attrs,
-            field,
-            attribute_value_type,
-            &mut container.key_schemas,
-            &mut container.attribute_definitions,
-            &mut container.global_secondary_index_key_schemas,
-        )?;
+        parse_from_dynamo_attrs(&field.attrs, field, attribute_value_type, &mut container)?;
 
         containers.push(container);
     }
@@ -138,12 +134,39 @@ fn expand_get_table_name_fn(table_name: &LitStr) -> TokenStream {
     }
 }
 
+fn expand_prelude_structs(
+    vis: &Visibility,
+    struct_name: &Ident,
+    containers: &[Container],
+) -> Vec<TokenStream> {
+    let primary_key_fields = containers
+        .iter()
+        .filter(|c| !c.key_schemas.is_empty())
+        .map(|c| {
+            let ident = c.field_ident;
+            let ty = c.ty;
+            quote! { pub #ident: #ty }
+        })
+        .collect::<Vec<_>>();
+
+    let primary_key_input_struct_name =
+        format_ident!("{struct_name}{PRIMARY_KEY_INPUT_STRUCT_POSTFIX}",);
+    let primary_key_input_struct = quote! {
+        #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+        #vis struct #primary_key_input_struct_name {
+            #( #primary_key_fields, )*
+        }
+    };
+
+    vec![primary_key_input_struct]
+}
+
 fn expand_create_table_fn(
     containers: &[Container],
     table_name: &LitStr,
     span: Span,
 ) -> Result<TokenStream> {
-    let attribute_definitions = containers
+    let attribute_definitions_token_stream = containers
         .iter()
         .flat_map(|c| {
             c.attribute_definitions
@@ -159,7 +182,7 @@ fn expand_create_table_fn(
 
     validate_and_sort_key_schemas(&mut key_schemas, span)?;
 
-    let key_schemas = key_schemas
+    let key_schema_token_stream = key_schemas
         .into_iter()
         .map(|(ident, ty)| expand_key_schema(ident, *ty))
         .collect::<Vec<_>>();
@@ -170,9 +193,52 @@ fn expand_create_table_fn(
             ) -> ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder {
                 builder
                     .table_name(#table_name)
-                    #( .attribute_definitions(#attribute_definitions) )*
-                    #( .key_schema(#key_schemas) )*
+                    #( .attribute_definitions(#attribute_definitions_token_stream) )*
+                    #( .key_schema(#key_schema_token_stream) )*
             }
+    })
+}
+
+fn expand_local_secondary_index_key_schemas_fn(
+    attribute_types_containers: &[Container],
+    span: Span,
+) -> Result<TokenStream> {
+    let mut lsi_key_schema_map = HashMap::<String, Vec<(&Ident, &KeySchemaType)>>::new();
+    for container in attribute_types_containers {
+        for (index_name, key_schema_types) in &container.local_secondary_index_key_schemas {
+            key_schema_types.iter().for_each(|ty| {
+                lsi_key_schema_map
+                    .entry(index_name.clone())
+                    .or_default()
+                    .push((container.field_ident, ty));
+            });
+        }
+    }
+
+    lsi_key_schema_map
+        .iter_mut()
+        .try_for_each(|(_, v)| validate_and_sort_key_schemas(v, span))?;
+
+    let key_schema_token_stream = lsi_key_schema_map
+        .into_iter()
+        .flat_map(|(index_name, ks)| {
+            ks.into_iter().map(move |(ident, key_schema_type)| {
+                let lsi_key_schemas_token = expand_key_schema(ident, *key_schema_type);
+                quote! {
+                    lsi_key_schemas.entry(#index_name.to_string()).or_default().push(#lsi_key_schemas_token);
+                }
+            })
+        }).collect::<Vec<_>>();
+
+    Ok(quote! {
+        fn get_local_secondary_index_key_schemas()
+            -> ::std::collections::HashMap<::std::string::String, Vec<::aws_sdk_dynamodb::types::KeySchemaElement>> {
+            let mut lsi_key_schemas: std::collections::HashMap<
+                String, Vec<aws_sdk_dynamodb::types::KeySchemaElement>
+            > = std::collections::HashMap::new();
+            #( #key_schema_token_stream )*;
+            lsi_key_schemas
+        }
     })
 }
 
@@ -182,8 +248,8 @@ fn expand_global_secondary_index_key_schemas_fn(
 ) -> Result<TokenStream> {
     let mut gsi_key_schema_map = HashMap::<String, Vec<(&Ident, &KeySchemaType)>>::new();
     for container in attribute_types_containers {
-        for (index_name, gsi_key_schema_types) in &container.global_secondary_index_key_schemas {
-            gsi_key_schema_types.iter().for_each(|ty| {
+        for (index_name, key_schema_types) in &container.global_secondary_index_key_schemas {
+            key_schema_types.iter().for_each(|ty| {
                 gsi_key_schema_map
                     .entry(index_name.clone())
                     .or_default()
@@ -196,7 +262,7 @@ fn expand_global_secondary_index_key_schemas_fn(
         .iter_mut()
         .try_for_each(|(_, v)| validate_and_sort_key_schemas(v, span))?;
 
-    let gsi_key_schemas = gsi_key_schema_map
+    let key_schema_token_stream = gsi_key_schema_map
         .into_iter()
         .flat_map(|(index_name, ks)| {
             ks.into_iter().map(move |(ident, key_schema_type)| {
@@ -213,7 +279,7 @@ fn expand_global_secondary_index_key_schemas_fn(
             let mut gsi_key_schemas: std::collections::HashMap<
                 String, Vec<aws_sdk_dynamodb::types::KeySchemaElement>
             > = std::collections::HashMap::new();
-            #( #gsi_key_schemas )*;
+            #( #key_schema_token_stream )*;
             gsi_key_schemas
         }
     })
@@ -268,33 +334,6 @@ fn expand_put_item_fn(
                 #( .#to_items )*
         }
     }
-}
-
-fn expand_prelude_structs(
-    vis: &Visibility,
-    struct_name: &Ident,
-    containers: &[Container],
-) -> Vec<TokenStream> {
-    let primary_key_fields = containers
-        .iter()
-        .filter(|c| !c.key_schemas.is_empty())
-        .map(|c| {
-            let ident = c.field_ident;
-            let ty = c.ty;
-            quote! { pub #ident: #ty }
-        })
-        .collect::<Vec<_>>();
-
-    let primary_key_input_struct_name =
-        format_ident!("{struct_name}{PRIMARY_KEY_INPUT_STRUCT_POSTFIX}",);
-    let primary_key_input_struct = quote! {
-        #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-        #vis struct #primary_key_input_struct_name {
-            #( #primary_key_fields, )*
-        }
-    };
-
-    vec![primary_key_input_struct]
 }
 
 fn expand_get_primary_keys_fn(
