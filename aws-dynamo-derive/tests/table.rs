@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use aws_sdk_dynamodb::primitives::Blob;
 use aws_sdk_dynamodb::types::{
-    AttributeDefinition, AttributeValue, KeySchemaElement, KeyType, LocalSecondaryIndex,
-    Projection, ProjectionType, ProvisionedThroughput, ScalarAttributeType,
+    AttributeDefinition, AttributeValue, GlobalSecondaryIndex, KeySchemaElement, KeyType,
+    LocalSecondaryIndex, Projection, ProjectionType, ProvisionedThroughput, ScalarAttributeType,
 };
 use aws_sdk_dynamodb::Client;
 
@@ -89,6 +89,11 @@ async fn test_create_table_and_put_item() {
                 .unwrap(),
             AttributeDefinition::builder()
                 .attribute_name("Primary")
+                .attribute_type(ScalarAttributeType::S)
+                .build()
+                .unwrap(),
+            AttributeDefinition::builder()
+                .attribute_name("HashKey")
                 .attribute_type(ScalarAttributeType::S)
                 .build()
                 .unwrap(),
@@ -351,8 +356,46 @@ async fn test_local() {
         .build()
         .unwrap();
 
+    let gsi_key_schemas = FooTable::get_global_secondary_index_key_schemas();
+    let gsi_builder_1 = GlobalSecondaryIndex::builder()
+        .index_name("gsi1")
+        .set_key_schema(Some(gsi_key_schemas.get("gsi1").unwrap().clone()))
+        .provisioned_throughput(
+            ProvisionedThroughput::builder()
+                .read_capacity_units(1)
+                .write_capacity_units(1)
+                .build()
+                .unwrap(),
+        )
+        .projection(
+            Projection::builder()
+                .projection_type(ProjectionType::All)
+                .build(),
+        )
+        .build()
+        .unwrap();
+    let gsi_builder_2 = GlobalSecondaryIndex::builder()
+        .index_name("gsi2")
+        .set_key_schema(Some(gsi_key_schemas.get("gsi2").unwrap().clone()))
+        .provisioned_throughput(
+            ProvisionedThroughput::builder()
+                .read_capacity_units(1)
+                .write_capacity_units(1)
+                .build()
+                .unwrap(),
+        )
+        .projection(
+            Projection::builder()
+                .projection_type(ProjectionType::All)
+                .build(),
+        )
+        .build()
+        .unwrap();
+
     FooTable::create_table(client.create_table())
         .local_secondary_indexes(lsi_builder)
+        .global_secondary_indexes(gsi_builder_1)
+        .global_secondary_indexes(gsi_builder_2)
         .provisioned_throughput(
             ProvisionedThroughput::builder()
                 .read_capacity_units(1)
