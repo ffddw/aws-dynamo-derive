@@ -43,6 +43,7 @@ pub fn parse_from_dynamo_attrs(
                     field,
                     &table_meta,
                     attribute_value_type,
+                    &mut container.attribute_definitions,
                     &mut container.global_secondary_index_key_schemas,
                 )?;
 
@@ -70,6 +71,7 @@ fn parse_key_schemas(
             )?;
 
             key_schemas.push(*key_type);
+
             if !attribute_definitions.contains(&scalar_attribute_type) {
                 attribute_definitions.push(scalar_attribute_type);
             }
@@ -87,8 +89,10 @@ fn parse_local_secondary_index_key_schemas(
 ) -> Result<()> {
     if table.path.is_ident(LOCAL_SECONDARY_INDEX_ENTRY) {
         let mut index_name = String::from("");
+
         table.parse_nested_meta(|nested_meta| {
             let mut key_schemas = vec![];
+
             if nested_meta.path.is_ident(SECONDARY_INDEX_NAME) {
                 index_name =
                     strip_quote_mark(&nested_meta.value()?.parse::<Literal>()?.to_string())
@@ -124,14 +128,15 @@ fn parse_global_secondary_index_key_schemas(
     field: &Field,
     table: &ParseNestedMeta,
     attribute_value_type: AttributeValueType,
+    attribute_definitions: &mut Vec<ScalarAttributeType>,
     global_secondary_indexes: &mut BTreeMap<String, Vec<KeySchemaType>>,
 ) -> Result<()> {
-    let mut dummy_attribute_definitions: Vec<ScalarAttributeType> = Vec::new();
-
     if table.path.is_ident(GLOBAL_SECONDARY_INDEX_ENTRY) {
         let mut index_name = String::from("");
+
         table.parse_nested_meta(|nested_meta| {
             let mut key_schemas = vec![];
+
             if nested_meta.path.is_ident(SECONDARY_INDEX_NAME) {
                 index_name =
                     strip_quote_mark(&nested_meta.value()?.parse::<Literal>()?.to_string())
@@ -144,7 +149,7 @@ fn parse_global_secondary_index_key_schemas(
                     &nested_meta,
                     attribute_value_type,
                     &mut key_schemas,
-                    &mut dummy_attribute_definitions,
+                    attribute_definitions,
                 )?;
             }
 
