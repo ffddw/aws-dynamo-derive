@@ -17,6 +17,8 @@ pub struct Container<'a> {
     pub key_schemas: Vec<KeySchemaType>,
     /// ScalarAttributeTypes parsed from attribute
     pub attribute_definitions: Vec<ScalarAttributeType>,
+    /// lsi index (index_name, KeySchemaType)
+    pub local_secondary_index_key_schemas: BTreeMap<String, Vec<KeySchemaType>>,
     /// gsi index (index_name, KeySchemaType)
     pub global_secondary_index_key_schemas: BTreeMap<String, Vec<KeySchemaType>>,
     /// placeholder for conversions
@@ -34,6 +36,7 @@ impl<'a> Container<'a> {
             ty,
             key_schemas: vec![],
             attribute_definitions: vec![],
+            local_secondary_index_key_schemas: BTreeMap::new(),
             global_secondary_index_key_schemas: BTreeMap::new(),
             to_attribute_target_ident,
             to_attribute_token_stream: TokenStream::new(),

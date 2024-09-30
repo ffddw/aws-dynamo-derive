@@ -22,8 +22,8 @@ syn = { workspace = true, features = ["extra-traits"] }
 [dev-dependencies]
 aws-config = { workspace = true }
 aws-sdk-dynamodb = { workspace = true }
-tokio = { workspace = true, features = ["macros"] }
 test-context = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
