@@ -64,11 +64,30 @@ AttributeDefinition mappings:
 - `HashMap<String, T>` -> `M`, automatically converts inner values of `HashMap` to `AttributeValue` types.
 - struct that derives `Item` and be converted into `AttributeValue`.
 
+### LocalSecondaryIndex
+
+KeySchemas and AttributeDefinitions for LSIs are parsed and expanded to `create_table()` if you use the following macros:
+
+* Specify a HashKey for an LSI: `#[aws_dynamo(local_secondary_index(index_name = "lsi1", hash_key))]`
+  * You should also note that LSI must have the same hash key as the main table.
+* Specify a RangeKey for an LSI: `#[aws_dynamo(local_secondary_index(index_name = "lsi1", range_key))]`
+
+If you specify LSIs with above macros, you must attach `LocalSecondaryIndexBuilder`s to `CreateTableFluentBuilder` so that the LSI is created upon table creation.
+You can simply get `Vec<KeySchemaElement>` using `get_local_secondary_index_key_schemas()` and pass it to `set_key_schema()` method of `LocalSecondaryIndexBuilder`.
+
+Take a look at [test_local()](aws-dynamo-derive/tests/table.rs) to learn how to use LSIs.
+
 ### GlobalSecondaryIndex
 
-There are many things to set for GSI compared to other fields. This API only provides KeySchemaElement. 
-`get_global_secondary_index_key_schemas` returns a `HashMap` of `{ index name: [KeySchemaElement] }` with the value given to the attribute. 
-By getting the `Vec<KeySchemaElement>` using the `index_name` as the key of `HashMap`, you can pass the retrieved value to the `set_key_schema` method of `GlobalSecondaryIndexBuilder`.
+KeySchemas and AttributeDefinitions for GSIs are parsed and expanded to `create_table()` if you use the following macros:
+
+* Specify a HashKey for an GSI: `#[aws_dynamo(global_secondary_index(index_name = "gsi1", hash_key))]`
+* Specify a RangeKey for an GSI: `#[aws_dynamo(global_secondary_index(index_name = "gsi1", range_key))]`
+
+If you specify GSIs with above macros, you must attach `GlobalSecondaryIndexBuilder`s to `CreateTableFluentBuilder` so that the GSI is created upon table creation.
+You can simply get `Vec<KeySchemaElement>` using `get_global_secondary_index_key_schemas()` and pass it to `set_key_schema()` method of `GlobalSecondaryIndexBuilder`.
+
+Take a look at [test_local()](aws-dynamo-derive/tests/table.rs) to learn how to use GSIs.
 
 ### AttributeValue conversions
 
