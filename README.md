@@ -75,19 +75,19 @@ KeySchemas and AttributeDefinitions for LSIs are parsed and expanded to `create_
 If you specify LSIs with above macros, you must attach `LocalSecondaryIndexBuilder`s to `CreateTableFluentBuilder` so that the LSI is created upon table creation.
 You can simply get `Vec<KeySchemaElement>` using `get_local_secondary_index_key_schemas()` and pass it to `set_key_schema()` method of `LocalSecondaryIndexBuilder`.
 
-Take a look at [test_local()](aws-dynamo-derive/tests/table.rs) to learn how to use LSIs.
+Take a look at [test_local()](https://github.com/ffddw/aws-dynamo-derive/blob/d3931b6e99720decc23d0a8ef7e82ac1b9c05765/tests/table.rs#L347-L408) to learn how to use LSIs.
 
 ### GlobalSecondaryIndex
 
 KeySchemas and AttributeDefinitions for GSIs are parsed and expanded to `create_table()` if you use the following macros:
 
-* Specify a HashKey for an GSI: `#[aws_dynamo(global_secondary_index(index_name = "gsi1", hash_key))]`
-* Specify a RangeKey for an GSI: `#[aws_dynamo(global_secondary_index(index_name = "gsi1", range_key))]`
+* Specify a HashKey for a GSI: `#[aws_dynamo(global_secondary_index(index_name = "gsi1", hash_key))]`
+* Specify a RangeKey for a GSI: `#[aws_dynamo(global_secondary_index(index_name = "gsi1", range_key))]`
 
 If you specify GSIs with above macros, you must attach `GlobalSecondaryIndexBuilder`s to `CreateTableFluentBuilder` so that the GSI is created upon table creation.
 You can simply get `Vec<KeySchemaElement>` using `get_global_secondary_index_key_schemas()` and pass it to `set_key_schema()` method of `GlobalSecondaryIndexBuilder`.
 
-Take a look at [test_local()](aws-dynamo-derive/tests/table.rs) to learn how to use GSIs.
+Take a look at [test_local()](https://github.com/ffddw/aws-dynamo-derive/blob/d3931b6e99720decc23d0a8ef7e82ac1b9c05765/tests/table.rs#L347-L408) to learn how to use GSIs.
 
 ### AttributeValue conversions
 

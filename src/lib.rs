@@ -54,7 +54,7 @@ use syn::{parse_macro_input, DeriveInput};
 ///```
 /// In order to set LocalSecondaryIndex, annotate the field with `#[aws_dynamo(local_secondary_index(index_name = "foo_index_1", hash_key))]`.
 /// LSI can be retrieved using method `get_local_secondary_index_key_schemas` automatically derived by macro.
-/// It is imperative that you set the local secondary index along with the CreateTableFluentBuilder if you have LSIs. (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/LCICli.html#LCICli.CreateTableWithIndex)
+/// It is imperative that you set the local secondary index along with the CreateTableFluentBuilder if you have LSIs. <https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/LCICli.html#LCICli.CreateTableWithIndex>
 /// In order to set GlobalSecondaryIndex, annotate the field with `#[aws_dynamo(global_secondary_index(index_name = "foo_index_1", hash_key))]`.
 /// GSI can be retrieved using method `get_global_secondary_index_key_schemas` automatically derived by macro.
 ///
