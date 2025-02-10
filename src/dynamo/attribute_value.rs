@@ -235,7 +235,8 @@ fn expand_path<'a>(
         }
         _ => {
             let nested_type = match path_segment.ident.to_string().as_str() {
-                "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "u64" | "i128" | "u128" => {
+                "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "u64" | "i128" | "u128"
+                | "f32" | "f64" => {
                     container.to_attribute_token_stream = quote! {
                         ::aws_sdk_dynamodb::types::AttributeValue::N(#to_attribute_collection.to_string())
                     };

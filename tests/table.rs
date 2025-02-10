@@ -52,6 +52,8 @@ async fn test_create_table_and_put_item() {
         null: Option<()>,
         nulls: Vec<Option<()>>,
         map: HashMap<String, Vec<HashMap<String, String>>>,
+        float_32: f32,
+        float_64: f32,
     }
 
     let config = aws_config::load_from_env().await;
@@ -121,6 +123,8 @@ async fn test_create_table_and_put_item() {
         gsi_idx: "gsi_idx".to_string(),
         a: vec![vec![vec!["1".to_string()]]],
         bool: false,
+        float_32: 1.1,
+        float_64: 2.2,
     };
 
     let builder = foo_table.put_item(client.put_item());
@@ -150,6 +154,14 @@ async fn test_create_table_and_put_item() {
         AttributeValue::L(vec![AttributeValue::M(inner_expected_map)]),
     );
     assert_eq!(item.get("Map").unwrap(), &AttributeValue::M(expected_map));
+    assert_eq!(
+        item.get("Float32").unwrap(),
+        &AttributeValue::N("1.1".to_string())
+    );
+    assert_eq!(
+        item.get("Float64").unwrap(),
+        &AttributeValue::N("2.2".to_string())
+    );
 
     let local_secondary_indexes = FooTable::get_local_secondary_index_key_schemas();
     let idx_lsi = local_secondary_indexes.get("lsi1").unwrap();
