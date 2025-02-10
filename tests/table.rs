@@ -33,7 +33,7 @@ use aws_dynamo_derive::Table;
 #[tokio::test]
 async fn test_create_table_and_put_item() {
     #[derive(Table)]
-    #[aws_dynamo(table_name = "AwesomeFooTable")]
+    #[aws_dynamo(table_name = "AwesomeFooTable", rename = "PascalCase")]
     pub struct FooTable {
         #[aws_dynamo(range_key)]
         #[aws_dynamo(global_secondary_index(index_name = "gsi1", range_key))]
@@ -270,7 +270,7 @@ async fn attribute_value_to_rust_types_checks() {
         .clone();
 
     items
-        .entry("HashKey".to_string())
+        .entry("hash_key".to_string())
         .and_modify(|hk| *hk = AttributeValue::N("wrong".to_string()));
 
     // if the table attribute is not matched with the given value, returns error
@@ -301,8 +301,8 @@ async fn test_get_primary_keys() {
     });
 
     let mut expected_map = HashMap::new();
-    expected_map.insert("RangeKey".to_string(), AttributeValue::N(1.to_string()));
-    expected_map.insert("HashKey".to_string(), AttributeValue::S("hk".to_string()));
+    expected_map.insert("range_key".to_string(), AttributeValue::N(1.to_string()));
+    expected_map.insert("hash_key".to_string(), AttributeValue::S("hk".to_string()));
 
     assert_eq!(primary_key, expected_map);
 
