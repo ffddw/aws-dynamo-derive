@@ -27,11 +27,11 @@ this generates
 {
     "Value": M(
         {
-            "Numbers": Ns(["1", "2", "3"]), 
-            "ListOfSs": L([Ss(["one"]), Ss(["two"]), Ss(["three"])])
+            "numbers": Ns(["1", "2", "3"]), 
+            "list_of_ss": L([Ss(["one"]), Ss(["two"]), Ss(["three"])])
         }
     ), 
-    "Name": S("foo_value")
+    "name": S("foo_value")
 }
 ```
 
