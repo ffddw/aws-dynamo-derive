@@ -2,7 +2,7 @@ use crate::container::Container;
 use crate::dynamo::attribute_definition::ScalarAttributeType;
 use crate::dynamo::attribute_value::AttributeValueType;
 use crate::dynamo::key_schema::KeySchemaType;
-use crate::table::tags::AWS_DYNAMO_ATTR_META_ENTRY;
+use crate::tags::AWS_DYNAMO_ATTR_META_ENTRY;
 use crate::util::strip_quote_mark;
 
 use proc_macro2::Literal;

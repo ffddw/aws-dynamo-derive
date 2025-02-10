@@ -1,6 +1,6 @@
+use crate::case::Case;
 use crate::dynamo::attribute_definition::ScalarAttributeType;
 use crate::dynamo::key_schema::KeySchemaType;
-use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
@@ -48,13 +48,14 @@ impl<'a> Container<'a> {
 pub fn expand_impl_conversions(
     ident: &Ident,
     containers: &[Container],
+    case: Case,
 ) -> syn::Result<Vec<TokenStream>> {
     let mut impls = vec![];
 
     let map_inserts = containers
         .iter()
         .map(|c| {
-            let ident_key = to_pascal_case(&c.field_ident.to_string());
+            let ident_key = case.apply_str(&c.field_ident.to_string());
             let to_attribute_token = &c.to_attribute_token_stream;
             quote! {
                 map.insert(#ident_key.to_string(), #to_attribute_token);

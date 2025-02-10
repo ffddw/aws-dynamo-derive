@@ -1,5 +1,5 @@
+use crate::case::Case;
 use crate::dynamo::attribute_value::AttributeValueType;
-use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
@@ -37,8 +37,8 @@ impl ScalarAttributeType {
         Ok(scalar_attr_type)
     }
 
-    pub fn expand_attribute_definition(&self, ident: &Ident) -> TokenStream {
-        let ident = Literal::string(&to_pascal_case(&ident.to_string()));
+    pub fn expand_attribute_definition(&self, ident: &Ident, case: Case) -> TokenStream {
+        let ident = Literal::string(&case.apply_str(&ident.to_string()));
         quote! {
             aws_sdk_dynamodb::types::AttributeDefinition::builder()
             .attribute_name(#ident)

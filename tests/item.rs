@@ -33,6 +33,56 @@ async fn test_conversions() {
     let item = builder.get_item().as_ref().unwrap();
 
     let mut expected_map = HashMap::new();
+    expected_map.insert("hk".to_string(), AttributeValue::S("abc".to_string()));
+    let mut inner_map = HashMap::new();
+    inner_map.insert("name".to_string(), AttributeValue::S("foo".to_string()));
+    inner_map.insert("value".to_string(), AttributeValue::N("1".to_string()));
+    expected_map.insert(
+        "inner".to_string(),
+        AttributeValue::L(vec![AttributeValue::M(inner_map)]),
+    );
+
+    assert_eq!(item.get("hk"), expected_map.get("hk"));
+    assert_eq!(item.get("inner"), expected_map.get("inner"));
+
+    let outer = Outer::from_attribute_value(&expected_map).unwrap();
+    let outer2: Outer = expected_map.try_into().unwrap();
+
+    assert_eq!(outer, expected_outer);
+    assert_eq!(expected_outer, outer2);
+}
+
+#[tokio::test]
+async fn test_apply_case() -> syn::Result<()> {
+    #[derive(Table, Debug, Eq, PartialEq)]
+    #[aws_dynamo(rename = "PascalCase")]
+    struct Outer {
+        #[aws_dynamo(hash_key)]
+        hk: String,
+        inner: Vec<Inner>,
+    }
+
+    #[derive(Item, Clone, Debug, Eq, PartialEq)]
+    #[aws_dynamo(rename = "PascalCase")]
+    struct Inner {
+        name: String,
+        value: u32,
+    }
+
+    let expected_outer = Outer {
+        hk: "abc".to_string(),
+        inner: vec![Inner {
+            name: "foo".to_string(),
+            value: 1,
+        }],
+    };
+
+    let config = aws_config::load_from_env().await;
+    let client = Client::new(&config);
+    let builder = expected_outer.put_item(client.put_item());
+    let item = builder.get_item().as_ref().unwrap();
+
+    let mut expected_map = HashMap::new();
     expected_map.insert("Hk".to_string(), AttributeValue::S("abc".to_string()));
     let mut inner_map = HashMap::new();
     inner_map.insert("Name".to_string(), AttributeValue::S("foo".to_string()));
@@ -50,4 +100,6 @@ async fn test_conversions() {
 
     assert_eq!(outer, expected_outer);
     assert_eq!(expected_outer, outer2);
+
+    Ok(())
 }

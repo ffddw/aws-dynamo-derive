@@ -1,5 +1,5 @@
+use crate::case::Case;
 use crate::container::Container;
-use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
@@ -37,12 +37,13 @@ fn get_iter_variants(
     to_attribute_ident: &Ident,
     to_attribute_target_ident: &TokenStream,
     from_attribute_ident: &TokenStream,
+    case: Case,
     depth: usize,
 ) -> IterVariants {
     let mut to_attribute_collection =
         format_ident!("{}private_iterator", "_".repeat(depth)).to_token_stream();
     let mut from_attribute_collection = to_attribute_collection.clone();
-    let field_id_as_key = Literal::string(&to_pascal_case(&field_id.to_string()));
+    let field_id_as_key = Literal::string(&case.apply_str(&field_id.to_string()));
 
     if depth == 0 {
         to_attribute_collection = quote! { #to_attribute_target_ident.#to_attribute_ident };
@@ -65,6 +66,7 @@ pub fn expand_attribute_value<'a>(
     from_attribute_ident: &'a TokenStream,
     ty: &'a Type,
     depth: usize,
+    case: Case,
     container: Container<'a>,
 ) -> Result<(Container<'a>, AttributeValueType)> {
     let (mut container, nested_type) = match ty {
@@ -73,6 +75,7 @@ pub fn expand_attribute_value<'a>(
             from_attribute_ident,
             path,
             depth,
+            case,
             container,
         ),
         _ => Err(Error::new(ty.span(), "unsupported type")),
@@ -88,6 +91,7 @@ fn expand_path<'a>(
     from_attribute_ident: &'a TokenStream,
     path: &'a TypePath,
     depth: usize,
+    case: Case,
     mut container: Container<'a>,
 ) -> Result<(Container<'a>, AttributeValueType)> {
     let iter_variants = get_iter_variants(
@@ -95,6 +99,7 @@ fn expand_path<'a>(
         to_attribute_ident,
         container.to_attribute_target_ident,
         from_attribute_ident,
+        case,
         depth,
     );
     let IterVariants {
@@ -131,6 +136,7 @@ fn expand_path<'a>(
                         from_attribute_ident,
                         ty,
                         depth + 1,
+                        case,
                         container,
                     )?;
 
@@ -191,6 +197,7 @@ fn expand_path<'a>(
                         from_attribute_ident,
                         ty,
                         depth + 1,
+                        case,
                         container,
                     )?;
 
@@ -404,6 +411,7 @@ fn expand_plural_nested<'a>(
 mod test_attribute_value {
     use crate::dynamo::attribute_value::{expand_attribute_value, AttributeValueType, Container};
 
+    use crate::case::Case;
     use proc_macro2::{Ident, TokenStream};
     use quote::quote;
     use syn::{parse_quote, Result, Type};
@@ -449,6 +457,7 @@ mod test_attribute_value {
             &ctx.from_attribute_ident,
             &string_type,
             0,
+            Case::default(),
             container,
         )?;
         assert_eq!(
@@ -483,6 +492,7 @@ mod test_attribute_value {
                 &ctx.from_attribute_ident,
                 t,
                 0,
+                Case::default(),
                 container,
             )?;
             assert_eq!(
@@ -504,6 +514,7 @@ mod test_attribute_value {
             &ctx.from_attribute_ident,
             &blob_type,
             0,
+            Case::default(),
             container,
         )?;
         let expected = quote! {
@@ -529,6 +540,7 @@ mod test_attribute_value {
             &ctx.from_attribute_ident,
             &bool_type,
             0,
+            Case::default(),
             container,
         )?;
         assert_eq!(
@@ -551,6 +563,7 @@ mod test_attribute_value {
             &ctx.from_attribute_ident,
             &null_type,
             0,
+            Case::default(),
             container,
         )?;
         assert_eq!(
@@ -585,6 +598,7 @@ mod test_attribute_value {
             &ctx.from_attribute_ident,
             &string_list_type,
             0,
+            Case::default(),
             container,
         )?;
         assert_eq!(
@@ -621,6 +635,7 @@ mod test_attribute_value {
                 &ctx.from_attribute_ident,
                 t,
                 0,
+                Case::default(),
                 container,
             )?;
             assert_eq!(
@@ -651,6 +666,7 @@ mod test_attribute_value {
             &ctx.from_attribute_ident,
             &blob_list_type,
             0,
+            Case::default(),
             container,
         )?;
         assert_eq!(
@@ -691,6 +707,7 @@ mod test_attribute_value {
                 &ctx.from_attribute_ident,
                 t,
                 0,
+                Case::default(),
                 container,
             )?;
             assert_eq!(
@@ -718,6 +735,7 @@ mod test_attribute_value {
             &ctx.from_attribute_ident,
             &map,
             0,
+            Case::default(),
             container,
         );
         assert_eq!(
@@ -759,6 +777,7 @@ mod test_attribute_value {
                 &ctx.from_attribute_ident,
                 t,
                 0,
+                Case::default(),
                 container,
             )?;
             assert_eq!(
@@ -811,6 +830,7 @@ mod test_attribute_value {
             &ctx.from_attribute_ident,
             &nested_map_type,
             0,
+            Case::default(),
             container,
         )?;
         assert_eq!(

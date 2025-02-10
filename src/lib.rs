@@ -1,9 +1,11 @@
 #![doc = include_str!("../README.md")]
 
+mod case;
 mod container;
 mod dynamo;
 mod item;
 mod table;
+mod tags;
 mod util;
 
 use proc_macro::TokenStream;

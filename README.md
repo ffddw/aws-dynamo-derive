@@ -27,13 +27,27 @@ this generates
 {
     "Value": M(
         {
-            "Numbers": Ns(["1", "2", "3"]), 
-            "ListOfSs": L([Ss(["one"]), Ss(["two"]), Ss(["three"])])
+            "numbers": Ns(["1", "2", "3"]), 
+            "list_of_ss": L([Ss(["one"]), Ss(["two"]), Ss(["three"])])
         }
     ), 
-    "Name": S("foo_value")
+    "name": S("foo_value")
 }
 ```
+
+### Change Case
+By applying `#[rename = "SOME_CASE"]` attribute to Table or Item, it is able to change case to all member fields.
+```rust
+use aws_dynamo_derive::Table; 
+
+#[derive(Table)]
+#[aws_dynamo(rename = "PascalCase")]
+struct FooTable {
+  #[aws_dynamo(hash_key)]
+  pub some_item: String
+}
+```
+Member of FooTable `some_item` becomes `SomeItem` as the result of rename attribute. `snake_case` is the default as 
 
 ### KeySchemas and AttributeDefinitions
 

@@ -14,6 +14,10 @@ pub fn to_pascal_case(val: &str) -> String {
     pascal
 }
 
+pub fn strip_raw_r(val: &str) -> &str {
+    val.strip_prefix("r#").unwrap_or(val)
+}
+
 pub fn strip_quote_mark(val: &str) -> Option<&str> {
     val.strip_prefix('"')?.strip_suffix('"')
 }

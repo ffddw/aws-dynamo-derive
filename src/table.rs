@@ -1,21 +1,25 @@
 mod parser;
-mod tags;
 
+use crate::case::Case;
 use crate::container;
 use crate::container::Container;
 use crate::dynamo::attribute_value::expand_attribute_value;
 use crate::dynamo::key_schema::{expand_key_schema, validate_and_sort_key_schemas, KeySchemaType};
 use crate::table::parser::parse_from_dynamo_attrs;
-use crate::table::tags::{
-    AWS_DYNAMO_ATTR_META_ENTRY, KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX,
+use crate::tags::{
+    AWS_DYNAMO_ATTR_META_ENTRY, KEY_RENAME, KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX,
 };
-use crate::util::to_pascal_case;
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DataStruct, DeriveInput, Error, LitStr, Result, Visibility};
+
+struct TableMeta {
+    table_name: LitStr,
+    case: Case,
+}
 
 pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     let input_span = input.span();
@@ -28,7 +32,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         data,
     } = input;
 
-    let table_name = get_table_name(ident, attrs)?;
+    let TableMeta { table_name, case } = get_table_meta(ident, attrs)?;
     let ds = match &data {
         Data::Struct(ds) => ds,
         _ => return Err(Error::new(input.span(), "only struct type available")),
@@ -37,7 +41,7 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     let to_attribute_ident = quote! { self };
     let from_attribute_ident = quote! { value };
     let attribute_types_containers =
-        get_attribute_types_containers(ds, &to_attribute_ident, &from_attribute_ident)?;
+        get_attribute_types_containers(ds, &to_attribute_ident, &from_attribute_ident, case)?;
 
     let prelude_structs = expand_prelude_structs(vis, ident, &attribute_types_containers);
 
@@ -53,13 +57,17 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
         conversions,
     ) = (
         expand_get_table_name_fn(&table_name),
-        expand_create_table_fn(&attribute_types_containers, &table_name, input_span)?,
-        expand_local_secondary_index_key_schemas_fn(&attribute_types_containers, input_span)?,
-        expand_global_secondary_index_key_schemas_fn(&attribute_types_containers, input_span)?,
+        expand_create_table_fn(&attribute_types_containers, &table_name, case, input_span)?,
+        expand_local_secondary_index_key_schemas_fn(&attribute_types_containers, case, input_span)?,
+        expand_global_secondary_index_key_schemas_fn(
+            &attribute_types_containers,
+            case,
+            input_span,
+        )?,
         expand_from_attribute_value_fn(&attribute_types_containers, &from_attribute_ident),
-        expand_put_item_fn(&attribute_types_containers, &table_name),
-        expand_get_primary_keys_fn(ident, &attribute_types_containers)?,
-        expand_impl_conversions(ident, ds)?,
+        expand_put_item_fn(&attribute_types_containers, &table_name, case),
+        expand_get_primary_keys_fn(ident, case, &attribute_types_containers)?,
+        expand_impl_conversions(ident, ds, case)?,
     );
 
     Ok(quote! {
@@ -85,8 +93,9 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
     })
 }
 
-fn get_table_name(id: &Ident, attrs: &[Attribute]) -> Result<LitStr> {
-    let mut table_name = LitStr::new(&to_pascal_case(&id.to_string()), id.span());
+fn get_table_meta(id: &Ident, attrs: &[Attribute]) -> Result<TableMeta> {
+    let mut table_name = LitStr::new(&id.to_string(), id.span());
+    let mut case = Case::default();
 
     for attr in attrs {
         if attr.path().is_ident(AWS_DYNAMO_ATTR_META_ENTRY) {
@@ -94,17 +103,21 @@ fn get_table_name(id: &Ident, attrs: &[Attribute]) -> Result<LitStr> {
                 if table.path.is_ident(KEY_TABLE_NAME) {
                     table_name = table.value()?.parse()?;
                 }
+                if table.path.is_ident(KEY_RENAME) {
+                    case = table.value()?.parse()?;
+                }
                 Ok(())
             })?;
         }
     }
-    Ok(table_name)
+    Ok(TableMeta { table_name, case })
 }
 
 fn get_attribute_types_containers<'a>(
     ds: &'a DataStruct,
     to_attribute_ident: &'a TokenStream,
     from_attribute_ident: &'a TokenStream,
+    case: Case,
 ) -> Result<Vec<Container<'a>>> {
     let mut containers = vec![];
 
@@ -116,7 +129,7 @@ fn get_attribute_types_containers<'a>(
         let ty = &field.ty;
         let container = Container::new(ident, ty, to_attribute_ident);
         let (mut container, attribute_value_type) =
-            expand_attribute_value(ident, from_attribute_ident, ty, 0, container)?;
+            expand_attribute_value(ident, from_attribute_ident, ty, 0, case, container)?;
 
         parse_from_dynamo_attrs(&field.attrs, field, attribute_value_type, &mut container)?;
 
@@ -164,6 +177,7 @@ fn expand_prelude_structs(
 fn expand_create_table_fn(
     containers: &[Container],
     table_name: &LitStr,
+    case: Case,
     span: Span,
 ) -> Result<TokenStream> {
     let attribute_definitions_token_stream = containers
@@ -171,7 +185,7 @@ fn expand_create_table_fn(
         .flat_map(|c| {
             c.attribute_definitions
                 .iter()
-                .map(|ad| ad.expand_attribute_definition(c.field_ident))
+                .map(|ad| ad.expand_attribute_definition(c.field_ident, case))
         })
         .collect::<Vec<_>>();
 
@@ -184,7 +198,7 @@ fn expand_create_table_fn(
 
     let key_schema_token_stream = key_schemas
         .into_iter()
-        .map(|(ident, ty)| expand_key_schema(ident, *ty))
+        .map(|(ident, ty)| expand_key_schema(ident, *ty, case))
         .collect::<Vec<_>>();
 
     Ok(quote! {
@@ -201,6 +215,7 @@ fn expand_create_table_fn(
 
 fn expand_local_secondary_index_key_schemas_fn(
     attribute_types_containers: &[Container],
+    case: Case,
     span: Span,
 ) -> Result<TokenStream> {
     let mut lsi_key_schema_map = HashMap::<String, Vec<(&Ident, &KeySchemaType)>>::new();
@@ -223,7 +238,7 @@ fn expand_local_secondary_index_key_schemas_fn(
         .into_iter()
         .flat_map(|(index_name, ks)| {
             ks.into_iter().map(move |(ident, key_schema_type)| {
-                let lsi_key_schemas_token = expand_key_schema(ident, *key_schema_type);
+                let lsi_key_schemas_token = expand_key_schema(ident, *key_schema_type, case);
                 quote! {
                     lsi_key_schemas.entry(#index_name.to_string()).or_default().push(#lsi_key_schemas_token);
                 }
@@ -244,6 +259,7 @@ fn expand_local_secondary_index_key_schemas_fn(
 
 fn expand_global_secondary_index_key_schemas_fn(
     attribute_types_containers: &[Container],
+    case: Case,
     span: Span,
 ) -> Result<TokenStream> {
     let mut gsi_key_schema_map = HashMap::<String, Vec<(&Ident, &KeySchemaType)>>::new();
@@ -266,7 +282,7 @@ fn expand_global_secondary_index_key_schemas_fn(
         .into_iter()
         .flat_map(|(index_name, ks)| {
             ks.into_iter().map(move |(ident, key_schema_type)| {
-                let gsi_key_schemas_token = expand_key_schema(ident, *key_schema_type);
+                let gsi_key_schemas_token = expand_key_schema(ident, *key_schema_type, case);
                 quote! {
                     gsi_key_schemas.entry(#index_name.to_string()).or_default().push(#gsi_key_schemas_token);
                 }
@@ -314,11 +330,12 @@ fn expand_from_attribute_value_fn(
 fn expand_put_item_fn(
     attribute_types_containers: &[Container],
     table_name: &LitStr,
+    case: Case,
 ) -> TokenStream {
     let to_items = attribute_types_containers
         .iter()
         .map(|container| {
-            let ident_lit = Literal::string(&to_pascal_case(&container.field_ident.to_string()));
+            let ident_lit = Literal::string(&case.apply_str(&container.field_ident.to_string()));
             let item = &container.to_attribute_token_stream;
             quote! { item(#ident_lit.to_string(), #item) }
         })
@@ -338,6 +355,7 @@ fn expand_put_item_fn(
 
 fn expand_get_primary_keys_fn(
     struct_name: &Ident,
+    case: Case,
     containers: &[Container],
 ) -> Result<TokenStream> {
     let primary_key_fields = containers
@@ -349,10 +367,11 @@ fn expand_get_primary_keys_fn(
                 &c.from_attribute_token_stream,
                 c.ty,
                 0,
+                case,
                 c.clone(),
             )?;
             let ident = c.field_ident;
-            let ident_to_key = to_pascal_case(&ident.to_string());
+            let ident_to_key = case.apply_str(&ident.to_string());
             Ok(quote! {
                 primary_keys.insert(
                     #ident_to_key.to_string(),
@@ -377,12 +396,12 @@ fn expand_get_primary_keys_fn(
     })
 }
 
-fn expand_impl_conversions(ident: &Ident, ds: &DataStruct) -> Result<Vec<TokenStream>> {
+fn expand_impl_conversions(ident: &Ident, ds: &DataStruct, case: Case) -> Result<Vec<TokenStream>> {
     let to_attribute_ident = quote! { value };
     let from_attribute_ident = quote! { value };
 
     let containers =
-        get_attribute_types_containers(ds, &to_attribute_ident, &from_attribute_ident)?;
+        get_attribute_types_containers(ds, &to_attribute_ident, &from_attribute_ident, case)?;
 
-    container::expand_impl_conversions(ident, &containers)
+    container::expand_impl_conversions(ident, &containers, case)
 }
