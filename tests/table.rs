@@ -285,24 +285,19 @@ async fn test_get_primary_keys() {
         #[aws_dynamo(range_key)]
         range_key: u32,
         #[aws_dynamo(hash_key)]
-        hash_key: String,
+        r#type: String,
     }
-
-    let _foo_table = FooTable {
-        hash_key: "hk".to_string(),
-        range_key: 1,
-    };
 
     let config = aws_config::load_from_env().await;
     let client = Client::new(&config);
     let primary_key = FooTable::get_primary_keys(FooTablePrimaryKey {
         range_key: 1,
-        hash_key: "hk".to_string(),
+        r#type: "hk".to_string(),
     });
 
     let mut expected_map = HashMap::new();
     expected_map.insert("range_key".to_string(), AttributeValue::N(1.to_string()));
-    expected_map.insert("hash_key".to_string(), AttributeValue::S("hk".to_string()));
+    expected_map.insert("type".to_string(), AttributeValue::S("hk".to_string()));
 
     assert_eq!(primary_key, expected_map);
 
