@@ -35,6 +35,20 @@ this generates
 }
 ```
 
+### Change Case
+By applying `#[rename = "SOME_CASE"]` attribute to Table or Item, it is able to change case to all member fields.
+```rust
+use aws_dynamo_derive::Table; 
+
+#[derive(Table)]
+#[aws_dynamo(rename = "PascalCase")]
+struct FooTable {
+  #[aws_dynamo(hash_key)]
+  pub some_item: String
+}
+```
+Member of FooTable `some_item` becomes `SomeItem` as the result of rename attribute. `snake_case` is the default as 
+
 ### KeySchemas and AttributeDefinitions
 
 Struct fields decorated with `#[aws_dynamo(hash_key)]` add `KeyType::Hash` KeySchemas, and by data type of the fields, macro maps 
