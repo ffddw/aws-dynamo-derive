@@ -1,4 +1,4 @@
-use crate::util::to_pascal_case;
+use crate::case::Case;
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::quote;
@@ -21,8 +21,8 @@ impl Display for KeySchemaType {
     }
 }
 
-pub fn expand_key_schema(id: &Ident, key_type: KeySchemaType) -> TokenStream {
-    let ident = Literal::string(&to_pascal_case(&id.to_string()));
+pub fn expand_key_schema(id: &Ident, key_type: KeySchemaType, case: Case) -> TokenStream {
+    let ident = Literal::string(&case.apply_str(&id.to_string()));
 
     let key_type = match key_type {
         KeySchemaType::HashKey => quote! { ::aws_sdk_dynamodb::types::KeyType::Hash },
