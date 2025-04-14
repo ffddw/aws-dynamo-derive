@@ -14,6 +14,21 @@ pub fn to_pascal_case(val: &str) -> String {
     pascal
 }
 
+pub fn to_snake_case(val: &str) -> String {
+    let mut snake = String::new();
+    for (i, c) in val.chars().enumerate() {
+        if c.is_uppercase() {
+            if i != 0 {
+                snake.push('_');
+            }
+            snake.push(c.to_ascii_lowercase());
+        } else {
+            snake.push(c);
+        }
+    }
+    snake
+}
+
 pub fn strip_raw_r(val: &str) -> &str {
     val.strip_prefix("r#").unwrap_or(val)
 }

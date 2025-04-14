@@ -12,23 +12,36 @@ use aws_dynamo_derive::Table;
 /// ## Compile fail cases
 /// ```compile_fail
 /// #[derive(Table)]
-///     struct Table {
-///         #[aws_dynamo(hash_key)]
-///         hash_key: String,
-///         #[aws_dynamo(hash_key)] // compile fails: only one HashKey is allowed
-///         duplicated_hash_key: String,
-///     }
+/// struct Table {
+///     #[aws_dynamo(hash_key)]
+///     hash_key: String,
+///     #[aws_dynamo(hash_key)] // compile fails: only one HashKey is allowed
+///     duplicated_hash_key: String,
+/// }
 ///
 ///
 /// #[derive(Table)]
-///     struct Table {
-///         #[aws_dynamo(hash_key)]
-///         hash_key: String,
-///         #[aws_dynamo(range_key)]
-///         range_key: u32,
-///         #[aws_dynamo(range_key)]
-///         duplicated_range_key: u32, // compile fails: at most one RangeKey is allowed
-///     }
+/// struct Table {
+///     #[aws_dynamo(hash_key)]
+///     hash_key: String,
+///     #[aws_dynamo(range_key)]
+///     range_key: u32,
+///     #[aws_dynamo(range_key)]
+///     duplicated_range_key: u32, // compile fails: at most one RangeKey is allowed
+/// }
+///
+/// #[derive(Table)]
+/// #[aws_dynamo(table_name = "FooTable", table_name_fn = crate::table_name)]
+/// struct Table {
+///     #[aws_dynamo(hash_key)]
+///     hash_key: String,
+/// }
+///
+/// error: table name already set. static str and function cannot be used both
+///    --> tests/table.rs:34:43
+///     |
+/// 34  |     #[aws_dynamo(table_name = "FooTable", table_name_fn = crate::table_name)]
+///     |                                           ^^^^^^^^^^^^^
 
 #[tokio::test]
 async fn test_create_table_and_put_item() {
@@ -413,4 +426,26 @@ async fn test_local() {
         .send()
         .await
         .unwrap();
+}
+
+#[test]
+fn test_set_table_name_fn() {
+    fn table_name() -> &'static str {
+        "some_table_name"
+    }
+
+    #[derive(Table)]
+    #[aws_dynamo(table_name_fn = table_name)]
+    pub struct FooTable {
+        #[aws_dynamo(hash_key)]
+        primary: String,
+    }
+    assert_eq!(FooTable::get_table_name(), "some_table_name");
+
+    #[derive(Table)]
+    pub struct BarTable {
+        #[aws_dynamo(hash_key)]
+        primary: String,
+    }
+    assert_eq!(BarTable::get_table_name(), "bar_table");
 }
