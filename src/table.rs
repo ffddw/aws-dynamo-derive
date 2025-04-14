@@ -1,4 +1,5 @@
 mod parser;
+mod types;
 
 use crate::case::Case;
 use crate::container;
@@ -6,9 +7,12 @@ use crate::container::Container;
 use crate::dynamo::attribute_value::expand_attribute_value;
 use crate::dynamo::key_schema::{expand_key_schema, validate_and_sort_key_schemas, KeySchemaType};
 use crate::table::parser::parse_from_dynamo_attrs;
+use crate::table::types::TableName;
 use crate::tags::{
-    AWS_DYNAMO_ATTR_META_ENTRY, KEY_RENAME, KEY_TABLE_NAME, PRIMARY_KEY_INPUT_STRUCT_POSTFIX,
+    AWS_DYNAMO_ATTR_META_ENTRY, KEY_RENAME, KEY_TABLE_NAME, KEY_TABLE_NAME_FN,
+    PRIMARY_KEY_INPUT_STRUCT_POSTFIX,
 };
+use crate::util::to_snake_case;
 
 use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{format_ident, quote};
@@ -17,7 +21,7 @@ use syn::spanned::Spanned;
 use syn::{Attribute, Data, DataStruct, DeriveInput, Error, LitStr, Result, Visibility};
 
 struct TableMeta {
-    table_name: LitStr,
+    table_name: TableName,
     case: Case,
 }
 
@@ -94,14 +98,29 @@ pub fn expand_table(input: &mut DeriveInput) -> Result<TokenStream> {
 }
 
 fn get_table_meta(id: &Ident, attrs: &[Attribute]) -> Result<TableMeta> {
-    let mut table_name = LitStr::new(&id.to_string(), id.span());
+    let mut table_name = None;
     let mut case = Case::default();
 
     for attr in attrs {
         if attr.path().is_ident(AWS_DYNAMO_ATTR_META_ENTRY) {
             attr.parse_nested_meta(|table| {
                 if table.path.is_ident(KEY_TABLE_NAME) {
-                    table_name = table.value()?.parse()?;
+                    if table_name.is_some() {
+                        return Err(Error::new(
+                            table.path.span(),
+                            "table name already set. static str and function cannot be used both",
+                        ));
+                    }
+                    table_name = Some(TableName::StaticStr(table.value()?.parse()?));
+                }
+                if table.path.is_ident(KEY_TABLE_NAME_FN) {
+                    if table_name.is_some() {
+                        return Err(Error::new(
+                            table.path.span(),
+                            "table name already set. static str and function cannot be used both",
+                        ));
+                    }
+                    table_name = Some(TableName::Function(table.value()?.parse()?));
                 }
                 if table.path.is_ident(KEY_RENAME) {
                     case = table.value()?.parse()?;
@@ -110,6 +129,10 @@ fn get_table_meta(id: &Ident, attrs: &[Attribute]) -> Result<TableMeta> {
             })?;
         }
     }
+    let table_name = table_name.unwrap_or(TableName::StaticStr(LitStr::new(
+        &to_snake_case(&id.to_string()),
+        id.span(),
+    )));
     Ok(TableMeta { table_name, case })
 }
 
@@ -139,10 +162,11 @@ fn get_attribute_types_containers<'a>(
     Ok(containers)
 }
 
-fn expand_get_table_name_fn(table_name: &LitStr) -> TokenStream {
+fn expand_get_table_name_fn(table_name: &TableName) -> TokenStream {
+    let table_name_quote = table_name.table_name_quote();
     quote! {
         fn get_table_name() -> &'static ::std::primitive::str {
-            #table_name
+            #table_name_quote
         }
     }
 }
@@ -176,7 +200,7 @@ fn expand_prelude_structs(
 
 fn expand_create_table_fn(
     containers: &[Container],
-    table_name: &LitStr,
+    table_name: &TableName,
     case: Case,
     span: Span,
 ) -> Result<TokenStream> {
@@ -201,12 +225,14 @@ fn expand_create_table_fn(
         .map(|(ident, ty)| expand_key_schema(ident, *ty, case))
         .collect::<Vec<_>>();
 
+    let table_name_quote = table_name.table_name_quote();
+
     Ok(quote! {
         fn create_table(
                 mut builder: ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder
             ) -> ::aws_sdk_dynamodb::operation::create_table::builders::CreateTableFluentBuilder {
                 builder
-                    .table_name(#table_name)
+                    .table_name(#table_name_quote)
                     #( .attribute_definitions(#attribute_definitions_token_stream) )*
                     #( .key_schema(#key_schema_token_stream) )*
             }
@@ -329,7 +355,7 @@ fn expand_from_attribute_value_fn(
 
 fn expand_put_item_fn(
     attribute_types_containers: &[Container],
-    table_name: &LitStr,
+    table_name: &TableName,
     case: Case,
 ) -> TokenStream {
     let to_items = attribute_types_containers
@@ -341,13 +367,15 @@ fn expand_put_item_fn(
         })
         .collect::<Vec<_>>();
 
+    let table_name_quote = table_name.table_name_quote();
+
     quote! {
         fn put_item(
             &self,
             mut builder: ::aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder
         ) -> aws_sdk_dynamodb::operation::put_item::builders::PutItemFluentBuilder {
             builder
-                .table_name(#table_name)
+                .table_name(#table_name_quote)
                 #( .#to_items )*
         }
     }
