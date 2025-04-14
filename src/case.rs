@@ -1,4 +1,4 @@
-use crate::util::{strip_raw_r, to_pascal_case};
+use crate::util::{strip_raw_r, to_pascal_case, to_snake_case};
 
 use proc_macro2::Span;
 use std::str::FromStr;
@@ -14,8 +14,9 @@ pub enum Case {
 
 impl Case {
     pub fn apply_str(&self, s: &str) -> String {
+        let s = strip_raw_r(s);
         match self {
-            Self::SnakeCase => strip_raw_r(s).to_string(),
+            Self::SnakeCase => to_snake_case(s),
             Self::PascalCase => to_pascal_case(s),
         }
     }
